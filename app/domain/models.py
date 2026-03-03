@@ -1,13 +1,11 @@
 from typing import Optional
 import uuid as uuid_pkg
 
-from datetime import date, datetime
 from sqlalchemy import text
 from sqlalchemy.orm import RelationshipProperty
 from sqlmodel import SQLModel, Field, Relationship, Column, Index, UniqueConstraint
-from pydantic import AliasChoices, field_validator, model_validator
+from pydantic import AliasChoices
 
-from app.domain.base import UUIDModel, TimestampModel
 from app.utils.validators import ReportDate, ReportDateTime
 from app.utils.enums import (
     MarketTypeEnum, 
@@ -17,6 +15,109 @@ from app.utils.enums import (
     ReportStatusOptions
 )
 
+
+class Auction(SQLModel, table=True):
+    """
+    ORM model for the auctions table, with relationships to StoredReport and Reports.
+    """
+
+    __tablename__ = "auctions"
+
+    slug: str = Field(primary_key=True, index=True)
+    display_name: str = Field(unique=True, index=True)
+    report_title: str = Field(unique=True, index=True)
+
+    # sa_column bypasses type inference, so nullable=False IS needed here
+    market_type: MarketTypeOptions = Field(
+        sa_column=Column(
+            MarketTypeEnum, 
+            nullable=False, 
+            default=MarketTypeOptions.LIVE
+        )
+    )
+
+    offset: int = Field(default=0)
+    active: bool = Field(default=True)
+
+    stored_report: Optional["StoredReport"] = Relationship(
+        sa_relationship=RelationshipProperty(
+            "StoredReport",
+            uselist=False,
+            back_populates="auction"
+        ),
+        cascade_delete=True,
+    )
+    reports: list["Reports"] = Relationship(
+        back_populates="auction",
+        cascade_delete=True,
+    )
+
+    def __str__(self) -> str:
+        return f"{self.display_name}({self.slug})"
+
+
+class StoredReport(SQLModel, table=True):
+    """
+    ORM model for the stored_reports table, linked one-to-one with Auction.
+    """
+
+    __tablename__ = "stored_reports"
+
+    slug: str = Field(
+        primary_key=True,
+        index=True,
+        foreign_key="auctions.slug",
+        exclude=True
+    )
+
+    report_date: ReportDate
+    published_date: ReportDateTime
+
+    report_status: ReportStatusOptions = Field(
+        sa_column=Column(
+            ReportStatusEnum, 
+            nullable=False
+        )
+    )
+    market_type: MarketTypeOptions = Field(
+        sa_column=Column(
+            MarketTypeEnum, 
+            nullable=False
+        )
+    )
+    has_corrections: bool
+
+    auction: Auction = Relationship(
+        sa_relationship=RelationshipProperty(
+            "Auction",
+            back_populates="stored_report",
+            single_parent=True
+        )
+    )
+   
+   
+class IncomingReport(SQLModel):
+    """
+    Validation-only model for parsing raw API responses.
+
+    Incoming data formats:
+        slug            : "1234"
+        report_date     : MM/DD/YYYY
+        published_date  : MM/DD/YYYY HH:MM:SS
+        report_status   : "Preliminary" or "Final"
+        market_type     : list[str] (e.g. ["Auction Livestock"])
+        has_corrections : true or false
+    """
+
+    slug: str = Field(alias="slug_id")
+    report_date: ReportDate
+    published_date: ReportDateTime
+
+    report_status: ReportStatusOptions = Field(alias="report_status")
+    market_type: MarketTypeOptions = Field(alias="market_types")
+    has_corrections: bool = Field(alias="hasCorrectionsInLastThreeDays")
+    
+
 class ReportDetail(SQLModel):
     """
     Schema for shared report detail fields. Not a database table.
@@ -25,9 +126,10 @@ class ReportDetail(SQLModel):
         report_date                   : MM/DD/YYYY
         report_end_date               : MM/DD/YYYY
         published_date                : MM/DD/YYYY HH:MM:SS
+        head_count                    : int (e.g. 150)
         avg_weight                    : float or str (e.g. "850.5" or 850.5)
         avg_price                     : float or str (e.g. "850.5" or 850.5)
-        region                        : Optional[str] (e.g. "North Central", "South Central")
+        region                        : Optional[str] (e.g. "North Central", "South Central", or None)
     """
 
     report_date: ReportDate
@@ -64,93 +166,6 @@ class ReportResponse(SQLModel):
         return self.stats.returned_rows
     
 
-class Auction(SQLModel, table=True):
-    """
-    Table for auction metadata with relationships to LatestReport and Reports.
-
-    Date formats:
-        report_date    : MM/DD/YYYY
-        published_date : MM/DD/YYYY HH:MM:SS 
-    """
-
-    __tablename__ = "auctions"
-
-    # Primary keys are implicitly non-null — nullable=False not needed
-    slug: str = Field(primary_key=True, index=True)
-    # Plain str fields are inferred as nullable=False by SQLAlchemy — no need to state it
-    display_name: str = Field(unique=True, index=True)
-    report_title: str = Field(unique=True, index=True)
-
-    # sa_column bypasses type inference, so nullable=False IS needed here
-    market_type: MarketTypeOptions = Field(
-        sa_column=Column(MarketTypeEnum, nullable=False, default=MarketTypeOptions.LIVE)
-    )
-
-    # Plain int/bool fields are inferred as nullable=False
-    offset: int = Field(default=0)
-    active: bool = Field(default=True)
-
-    latest_report: Optional["LatestReport"] = Relationship(
-        sa_relationship=RelationshipProperty(
-            "LatestReport",
-            uselist=False,
-            back_populates="auction"
-        ),
-        cascade_delete=True,
-    )
-    reports: list["Reports"] = Relationship(
-        back_populates="auction",
-        cascade_delete=True,
-    )
-
-    def __str__(self) -> str:
-        return f"{self.display_name}({self.slug})"
-    
-
-class LatestReport(SQLModel, table=True):
-    """
-    Table for last fetched report metadata, linked one-to-one with Auction.
-
-    Incoming data formats:
-        report_date    : MM/DD/YYYY
-        published_date : MM/DD/YYYY HH:MM:SS
-        report_status  : "Preliminary" or "Final"
-        market_type    : list[str] (e.g. ["Auction Livestock"], ["Direct Livestock"], ["Video Auction Livestock"])
-    """
-
-    __tablename__ = "latest_reports"
-
-    # Primary key + foreign key — nullable=False is implicit
-    slug: str = Field(alias="slug_id", primary_key=True, index=True, foreign_key="auctions.slug")
-
-    report_date: ReportDate
-    published_date: ReportDateTime
-
-    # sa_column bypasses type inference — nullable=False IS needed here if required
-    report_status: ReportStatusOptions = Field(
-        sa_column=Column(ReportStatusEnum, nullable=False)
-    )
-    market_type: MarketTypeOptions = Field(
-        alias="market_types",
-        sa_column=Column(MarketTypeEnum, nullable=False),
-    )
-
-    has_corrections: bool = Field(alias="hasCorrectionsInLastThreeDays")
-
-    auction: Optional[Auction] = Relationship(back_populates="latest_report")
-
-    @model_validator(mode="after")
-    def require_slug(self) -> "LatestReport":
-        if self.slug is None:
-            raise ValueError("slug_id is required — must reference a valid auctions.slug")
-        return self
-
-    def __str__(self) -> str:
-        if self.report_status == ReportStatusOptions.PRELIMINARY:
-            return f"{self.slug}, {self.report_date}, {self.report_status}, published={self.published_date})"
-        return f"{self.auction}: {self.report_status} report on {self.report_date}"
-
-
 class Reports(SQLModel, table=True):
     __tablename__ = "reports"
     
@@ -182,22 +197,6 @@ class Reports(SQLModel, table=True):
             "unique": True
         }
     )
-    created_at: datetime = Field(
-        default_factory=datetime.now,
-        nullable=False,
-        sa_column_kwargs={
-            "server_default": text("current_timestamp(0)")
-        }
-    )
-
-    updated_at: datetime = Field(
-        default_factory=datetime.now,
-        nullable=False,
-        sa_column_kwargs={
-            "server_default": text("current_timestamp(0)"),
-            "onupdate": text("current_timestamp(0)")
-        }
-    )
 
     report_date: ReportDate
     report_end_date: ReportDate
@@ -207,11 +206,8 @@ class Reports(SQLModel, table=True):
     report_status: ReportStatusOptions = Field(
         sa_column=Column(ReportStatusEnum, nullable=False)
     )
-
-    # Optional[] is correctly inferred as nullable=True — no extra config needed
     region: Optional[RegionOptions] = Field(default=None)
 
-    # Plain int/float inferred as nullable=False, defaults handled by Python
     head1: int = Field(default=0)
     weight1: float = Field(default=0.0)
     price1: float = Field(default=0.0)
@@ -228,16 +224,17 @@ class Reports(SQLModel, table=True):
     weight4: float = Field(default=0.0)
     price4: float = Field(default=0.0)
 
+    # Slots 1-4 are weight-classes; slot 5 is the computed total
     head5: int = Field(gt=0)
     weight5: float = Field(gt=0.0)
     price5: float = Field(gt=0.0)
 
-    # Plain str foreign key inferred as nullable=False
     auction_slug: str = Field(foreign_key="auctions.slug", ondelete="CASCADE")
     auction: Auction = Relationship(back_populates="reports")
 
     def __str__(self) -> str:
+        data_str = f"{self.head5} head at ${self.price5} on {self.report_date}"
         if self.region:
-            return f"{self.display_name} {self.region}({self.slug}): {self.head5} head at ${self.price5} on {self.report_date}"
-        return f"{self.auction}: {self.head5} head at ${self.price5} on {self.report_date}"
+            return f"{self.auction.display_name} {self.region}({self.auction_slug}): {data_str}"
+        return f"{self.auction.display_name}({self.auction_slug}): {data_str}"
     

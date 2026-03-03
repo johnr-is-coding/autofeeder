@@ -1,5 +1,5 @@
 from typing import Annotated, Any
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, timezone
 from dateutil.parser import parse
 
 from pydantic import BeforeValidator

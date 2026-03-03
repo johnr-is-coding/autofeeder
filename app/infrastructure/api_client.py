@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.config import settings
 from app.utils.enums import MarketTypeOptions
-from app.domain.models import ReportResponse, LatestReport
+from app.domain.models import ReportResponse, StoredReport
 from app.utils.exceptions import APIClientError, ReportNotFoundError
 
 
@@ -77,7 +77,7 @@ class APIClient(BaseAPIClient):
         self.endpoint = f"{base_url}/{api_version}/reports"
 
 
-    async def fetch_current_reports(self) -> list[LatestReport]:
+    async def fetch_current_reports(self) -> list[StoredReport]:
         try:
             data = await self._get(self.endpoint)
         except aiohttp.ClientError as exc:
@@ -91,7 +91,7 @@ class APIClient(BaseAPIClient):
         reports = []
         for item in data:
             try:
-                reports.append(LatestReport.model_validate(item))
+                reports.append(StoredReport.model_validate(item))
             except ValidationError:
                 pass
 

@@ -5,7 +5,7 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.models import LatestReport
+from app.domain.models import IncomingReport, StoredReport
 from app.infrastructure.api_client import APIClient
 
 
@@ -19,8 +19,8 @@ class ReportChangeType(Enum):
 class ReportChange:
     slug: str
     change_type: ReportChangeType
-    stored: LatestReport
-    incoming: LatestReport
+    stored: StoredReport
+    incoming: IncomingReport
 
 
 class ReportMonitor:
@@ -43,7 +43,7 @@ class ReportMonitor:
             for change in changes:
                 await self._dispatch(change)
 
-    def _detect_changes(self, stored: LatestReport, incoming: LatestReport) -> list[ReportChange]:
+    def _detect_changes(self, stored: StoredReport, incoming: IncomingReport) -> list[ReportChange]:
         """
         Detect field-level changes between the stored and incoming LatestReport.
 
@@ -137,6 +137,6 @@ class ReportMonitor:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _load_stored_reports(self) -> dict[str, LatestReport]:
-        result = await self.session.execute(select(LatestReport))
+    async def _load_stored_reports(self) -> dict[str, StoredReport]:
+        result = await self.session.execute(select(StoredReport))
         return {r.slug: r for r in result.scalars().all()}

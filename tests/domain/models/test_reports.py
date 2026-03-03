@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 
-from app.domain.models import Reports
+from app.domain.agg_models import Reports
 from app.utils.enums import (
     RegionOptions,
     ReportStatusOptions,

@@ -5,8 +5,10 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app.config import settings
+from app.domain.models.schemas import ReportResponse
+from app.domain.models.stored_report import StoredReport
 from app.utils.enums import MarketTypeOptions
-from app.domain.models import ReportResponse, StoredReport
+
 from app.utils.exceptions import APIClientError, ReportNotFoundError
 
 

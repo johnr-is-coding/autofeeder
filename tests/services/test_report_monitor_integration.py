@@ -10,7 +10,7 @@ Exclude from normal runs:
 
 import pytest
 
-from app.domain.models import LatestReport
+from app.domain.agg_models import LatestReport
 from app.infrastructure.api_client import APIClient
 from app.infrastructure.database import AsyncSessionLocal
 from app.services.report_monitor import ReportChange, ReportChangeType, ReportMonitor

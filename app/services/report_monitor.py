@@ -5,7 +5,8 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.models import IncomingReport, StoredReport
+from app.domain.models.schemas import IncomingReport
+from app.domain.models.stored_report import StoredReport
 from app.infrastructure.api_client import APIClient
 
 

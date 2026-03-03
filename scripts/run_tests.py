@@ -59,7 +59,7 @@ def main() -> None:
 
 
 def test_snippet():
-    from app.domain.models import Reports
+    from app.domain.agg_models import Reports
 
     # Test 1 — kwargs construction (current failing approach)
     try:

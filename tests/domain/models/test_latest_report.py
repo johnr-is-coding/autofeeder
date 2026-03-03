@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 
-from app.domain.models import LatestReport
+from app.domain.agg_models import LatestReport
 
 # ===========================================================================
 # LatestReport

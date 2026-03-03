@@ -1,6 +1,6 @@
 import pytest
 
-from app.domain.models import Auction
+from app.domain.agg_models import Auction
 from app.utils.enums import MarketTypeOptions
 
 

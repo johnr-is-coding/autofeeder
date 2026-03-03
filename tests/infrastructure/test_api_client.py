@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.infrastructure.api_client import APIClient
-from app.domain.models import LatestReport
+from app.domain.agg_models import LatestReport
 
 MODULE = "app.infrastructure.api_client"
 

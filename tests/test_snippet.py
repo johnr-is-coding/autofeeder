@@ -1,6 +1,6 @@
 import pytest
 
-from app.domain.models import Reports
+from app.domain.agg_models import Reports
 
 @pytest.fixture
 def base_report_data():

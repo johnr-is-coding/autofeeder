@@ -2,7 +2,7 @@ import pytest
 
 from pydantic import ValidationError
 
-from app.domain.models import ReportDetail, ReportResponse, ReportStats
+from app.domain.agg_models import ReportDetail, ReportResponse, ReportStats
 from app.utils.enums import RegionOptions
 
 

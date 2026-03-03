@@ -4,9 +4,9 @@ import typer
 from loguru import logger
 
 from app.config import settings
+from app.logger import setup_logging
 from app.infrastructure.api_client import APIClient
 from app.infrastructure.database import AsyncSessionLocal, dispose_engine
-from app.logger import setup_logging
 from app.services.report_monitor import ReportMonitor
 
 setup_logging()

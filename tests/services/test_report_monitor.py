@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.domain.models import LatestReport
+from app.domain.agg_models import LatestReport
 from app.services.report_monitor import ReportChange, ReportChangeType, ReportMonitor
 from app.utils.enums import ReportStatusOptions
 

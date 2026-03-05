@@ -56,27 +56,3 @@ def main() -> None:
     except subprocess.CalledProcessError as e:
         print(f"❌ Tests failed with exit code {e.returncode}")
         sys.exit(e.returncode)
-
-
-def test_snippet():
-    from app.domain.agg_models import Reports
-
-    # Test 1 — kwargs construction (current failing approach)
-    try:
-        r = Reports(head5=-1, weight5=-1.0, price5=-1.0, 
-                    report_date="01/15/2024", report_end_date="01/15/2024",
-                    published_date="01/15/2024 10:00:00",
-                    report_status="final", auction_slug="test")
-        print(f"kwargs: NO ERROR, head5={r.head5}")
-    except Exception as e:
-        print(f"kwargs: RAISED {e}")
-
-    # Test 2 — model_validate (proposed fix)
-    try:
-        r = Reports.model_validate(dict(head5=-1, weight5=-1.0, price5=-1.0,
-                    report_date="01/15/2024", report_end_date="01/15/2024",
-                    published_date="01/15/2024 10:00:00",
-                    report_status="final", auction_slug="test"))
-        print(f"model_validate: NO ERROR, head5={r.head5}")
-    except Exception as e:
-        print(f"model_validate: RAISED {e}")

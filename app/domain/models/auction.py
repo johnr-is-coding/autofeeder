@@ -5,7 +5,7 @@ from sqlmodel import Column, SQLModel, Field, Relationship
 
 from app.utils.enums import (
     MarketTypeEnum,
-    MarketTypeOptions
+    MarketType,
 )
 
 if TYPE_CHECKING:
@@ -24,11 +24,11 @@ class Auction(SQLModel, table=True):
     report_title: str = Field(unique=True, index=True)
 
     # sa_column bypasses type inference, so nullable=False IS needed here
-    market_type: MarketTypeOptions = Field(
+    market_type: MarketType = Field(
         sa_column=Column(
-            MarketTypeEnum, 
-            nullable=False, 
-            default=MarketTypeOptions.LIVE
+            MarketTypeEnum,
+            nullable=False,
+            default=MarketType.LIVE
         )
     )
 

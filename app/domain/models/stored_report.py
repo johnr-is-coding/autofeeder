@@ -1,14 +1,14 @@
+from datetime import date, datetime
+
 from sqlmodel import Column, SQLModel, Field, Relationship
 from sqlalchemy.orm import RelationshipProperty
 
 from app.domain.models.auction import Auction
-from app.utils.validators import ReportDate, ReportDateTime
 from app.utils.enums import (
     MarketTypeEnum,
     ReportStatusEnum,
-    MarketTypeOptions,
-    ReportStatusOptions,
-    ReportStatusOptions
+    MarketType,
+    ReportStatus,
 )
 
 
@@ -26,16 +26,16 @@ class StoredReport(SQLModel, table=True):
         exclude=True
     )
 
-    report_date: ReportDate
-    published_date: ReportDateTime
+    report_date: date
+    published_date: datetime
 
-    report_status: ReportStatusOptions = Field(
+    report_status: ReportStatus = Field(
         sa_column=Column(
             ReportStatusEnum, 
             nullable=False
         )
     )
-    market_type: MarketTypeOptions = Field(
+    market_type: MarketType = Field(
         sa_column=Column(
             MarketTypeEnum, 
             nullable=False
@@ -46,7 +46,7 @@ class StoredReport(SQLModel, table=True):
     auction: Auction = Relationship(
         sa_relationship=RelationshipProperty(
             "Auction",
-            back_populates="stored_reports",
+            back_populates="stored_report",
             single_parent=True
         )
     )

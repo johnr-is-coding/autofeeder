@@ -3,12 +3,12 @@ from loguru import logger
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
-    AsyncConnection, 
-    AsyncEngine, 
-    AsyncSession,
-    async_sessionmaker, 
-    create_async_engine, 
+    AsyncConnection,
+    AsyncEngine,
+    async_sessionmaker,
+    create_async_engine,
 )
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
 

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 from pydantic import BeforeValidator
 from sqlalchemy.dialects import postgresql
@@ -25,65 +25,61 @@ class LowerStrEnum(str, Enum):
 # Enums
 # -------------------------------------------------------------------
 
-class RegionOptions(LowerStrEnum):
+class Region(LowerStrEnum):
     NORTH_CENTRAL = "north central"
     SOUTH_CENTRAL = "south central"
 
-class ReportStatusOptions(LowerStrEnum):
+class ReportStatus(LowerStrEnum):
     FINAL = "final"
     PRELIMINARY = "preliminary"
 
-class MarketTypeOptions(str, Enum):
+class MarketType(str, Enum):
     LIVE = "live"
     DIRECT = "direct"
     VIDEO = "video"
 
 
 # -------------------------------------------------------------------
-# Market Type Validator
+# Market Type Field (Pydantic annotated type with input normalization)
 # -------------------------------------------------------------------
 
 MARKET_TYPE_MAPPING = {
-    "auction livestock": MarketTypeOptions.LIVE,
-    "direct livestock": MarketTypeOptions.DIRECT,
-    "video auction livestock": MarketTypeOptions.VIDEO,
+    "auction livestock": MarketType.LIVE,
+    "direct livestock": MarketType.DIRECT,
+    "video auction livestock": MarketType.VIDEO,
 }
 
-def normalize_market_type(value: Any) -> MarketTypeOptions:
+def normalize_market_type(value: Any) -> Optional[MarketType]:
     if not isinstance(value, list) or not value:
-        raise ValueError(f"Invalid market type: {value}")
-    
+        raise ValueError(f"Market type must be a non-empty list; got: {value!r}")
+
     normalized = value[0].lower()
-    try:
-        return MARKET_TYPE_MAPPING[normalized]
-    except KeyError as exc:
-        raise ValueError(f"Invalid market type: {value}") from exc
+    return MARKET_TYPE_MAPPING.get(normalized, None)
+ 
 
-
-MarketTypeValidator = Annotated[
-    MarketTypeOptions,
+MarketTypeField = Annotated[
+    Optional[MarketType],
     BeforeValidator(normalize_market_type),
 ]
-
 
 # -------------------------------------------------------------------
 # PostgreSQL ENUMS
 # -------------------------------------------------------------------
 
 MarketTypeEnum = postgresql.ENUM(
-    MarketTypeOptions,
+    MarketType,
     name="market_type_enum",
-    create_type=False, 
+    create_type=False,
 )
 
 ReportStatusEnum = postgresql.ENUM(
-    ReportStatusOptions,
+    ReportStatus,
     name="report_status_enum",
     create_type=False,
 )
 
 RegionEnum = postgresql.ENUM(
-    RegionOptions,
+    Region,
     name="region_enum",
     create_type=False,
 )

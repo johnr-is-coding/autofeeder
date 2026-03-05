@@ -1,3 +1,4 @@
+from datetime import date, datetime
 import uuid as uuid_pkg
 from typing import Optional
 
@@ -12,8 +13,7 @@ from sqlmodel import (
 )
 
 from app.domain.models.auction import Auction
-from app.utils.enums import RegionOptions, ReportStatusOptions, ReportStatusEnum
-from app.utils.validators import ReportDate, ReportDateTime
+from app.utils.enums import Region, ReportStatus, ReportStatusEnum
 
 class Report(SQLModel, table=True):
     __tablename__ = "reports"
@@ -47,15 +47,15 @@ class Report(SQLModel, table=True):
         }
     )
 
-    report_date: ReportDate
-    report_end_date: ReportDate
-    published_date: ReportDateTime
+    report_date: date
+    report_end_date: date
+    published_date: datetime
 
     # sa_column bypasses type inference — nullable=False IS needed here if required
-    report_status: ReportStatusOptions = Field(
+    report_status: ReportStatus = Field(
         sa_column=Column(ReportStatusEnum, nullable=False)
     )
-    region: Optional[RegionOptions] = Field(default=None)
+    region: Optional[Region] = Field(default=None)
 
     head1: int = Field(default=0)
     weight1: float = Field(default=0.0)

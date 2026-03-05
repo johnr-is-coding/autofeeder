@@ -4,11 +4,7 @@ from sqlmodel import SQLModel, Field
 from pydantic import AliasChoices
 
 from app.utils.validators import ReportDate, ReportDateTime
-from app.utils.enums import (
-    MarketTypeOptions,
-    RegionOptions,
-    ReportStatusOptions
-)
+from app.utils.enums import MarketTypeField, Region, ReportStatus
 
    
 class IncomingReport(SQLModel):
@@ -24,12 +20,12 @@ class IncomingReport(SQLModel):
         has_corrections : true or false
     """
 
-    slug: str = Field(alias="slug_id")
+    slug: str = Field(alias="slug_id",)
     report_date: ReportDate
     published_date: ReportDateTime
 
-    report_status: ReportStatusOptions = Field(alias="report_status")
-    market_type: MarketTypeOptions = Field(alias="market_types")
+    report_status: ReportStatus = Field(alias="report_status")
+    market_type: MarketTypeField = Field(alias="market_types")
     has_corrections: bool = Field(alias="hasCorrectionsInLastThreeDays")
     
 
@@ -57,13 +53,7 @@ class ReportDetail(SQLModel):
     avg_price: float = Field(
         validation_alias=AliasChoices("avg_price", "wtd_Avg_Price", "wtd_avg_price")
     )
-    region: Optional[RegionOptions] = Field(
-        default=None,
-        validation_alias=AliasChoices("region_name", "region"),
-    )
-
-    def __str__(self) -> str:
-        return f"({self.head_count}, {self.avg_weight}, {self.avg_price})"
+    region: Optional[Region] = Field(default=None, alias="region_name")
 
 
 class ReportStats(SQLModel):

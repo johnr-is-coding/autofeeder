@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from app.config import settings
 from app.domain.models.schemas import ReportResponse
 from app.domain.models.stored_report import StoredReport
-from app.utils.enums import MarketTypeOptions
+from app.utils.enums import MarketType
 
 from app.utils.exceptions import APIClientError, ReportNotFoundError
 
@@ -20,20 +20,20 @@ class QueryBuilder:
         "freight=F.O.B.;"
     )
 
-    _MARKET_FILTERS: dict[MarketTypeOptions, str] = {
-        MarketTypeOptions.LIVE: "avg_weight=700:899;",
-        MarketTypeOptions.VIDEO: "wtd_avg_wt=700:899;current=Yes;region_name=South Central,North Central;",
-        MarketTypeOptions.DIRECT: "wtd_avg_wt=700:899;current=Yes;",
+    _MARKET_FILTERS: dict[MarketType, str] = {
+        MarketType.LIVE: "avg_weight=700:899;",
+        MarketType.VIDEO: "wtd_avg_wt=700:899;current=Yes;region_name=South Central,North Central;",
+        MarketType.DIRECT: "wtd_avg_wt=700:899;current=Yes;",
     }
 
     # Pre-built at class load time — no work done at call time
-    _BUILT: dict[MarketTypeOptions, str] = {}
+    _BUILT: dict[MarketType, str] = {}
 
     def __init_subclass__(cls) -> None:
         cls._BUILT = {k: cls._BASE_FILTERS + v for k, v in cls._MARKET_FILTERS.items()}
 
     @classmethod
-    def build(cls, market_type: MarketTypeOptions) -> str:
+    def build(cls, market_type: MarketType) -> str:
         return cls._BUILT.get(market_type, cls._BASE_FILTERS)
     
 
@@ -104,7 +104,7 @@ class APIClient(BaseAPIClient):
     async def fetch_report_details(
         self,
         slug: str,
-        market_type: MarketTypeOptions,
+        market_type: MarketType,
         prev_report_date: date
     ) -> ReportResponse:
         url = f"{self.endpoint}/{slug}/Report Details"
@@ -127,7 +127,7 @@ class APIClient(BaseAPIClient):
     def _calculate_last_days(prev_report_date: date) -> int:
         return (date.today() - prev_report_date).days
     
-    def _build_report_params(self, market_type: MarketTypeOptions, prev_report_date: date) -> dict[str, Any]:
+    def _build_report_params(self, market_type: MarketType, prev_report_date: date) -> dict[str, Any]:
         return {
             "lastDays": self._calculate_last_days(prev_report_date),
             "q": QueryBuilder.build(market_type)

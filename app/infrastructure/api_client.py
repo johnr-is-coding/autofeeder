@@ -1,3 +1,5 @@
+from ast import In
+
 import aiohttp
 from typing import Any, Self
 from datetime import date
@@ -5,7 +7,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app.config import settings
-from app.domain.models.schemas import ReportResponse
+from app.domain.models.schemas import ReportResponse, IncomingReport
 from app.domain.models.stored_report import StoredReport
 from app.utils.enums import MarketType
 
@@ -26,15 +28,9 @@ class QueryBuilder:
         MarketType.DIRECT: "wtd_avg_wt=700:899;current=Yes;",
     }
 
-    # Pre-built at class load time — no work done at call time
-    _BUILT: dict[MarketType, str] = {}
-
-    def __init_subclass__(cls) -> None:
-        cls._BUILT = {k: cls._BASE_FILTERS + v for k, v in cls._MARKET_FILTERS.items()}
-
     @classmethod
-    def build(cls, market_type: MarketType) -> str:
-        return cls._BUILT.get(market_type, cls._BASE_FILTERS)
+    def build(self, market_type: MarketType) -> str:
+        return self._BASE_FILTERS + self._MARKET_FILTERS.get(market_type)
     
 
 class BaseAPIClient:
@@ -79,7 +75,7 @@ class APIClient(BaseAPIClient):
         self.endpoint = f"{base_url}/{api_version}/reports"
 
 
-    async def fetch_current_reports(self) -> list[StoredReport]:
+    async def fetch_current_reports(self) -> dict[str, IncomingReport]:
         try:
             data = await self._get(self.endpoint)
         except aiohttp.ClientError as exc:
@@ -90,16 +86,9 @@ class APIClient(BaseAPIClient):
             logger.warning("Unexpected response format", endpoint=self.endpoint, type=type(data).__name__)
             return []
         
-        reports = []
-        for item in data:
-            try:
-                reports.append(StoredReport.model_validate(item))
-            except ValidationError:
-                pass
-
+        reports = [IncomingReport(**item) for item in data]
         logger.info("Fetched reports", endpoint=self.endpoint, count=len(reports))
-        return reports
-
+        return {report.slug: report for report in reports}
 
     async def fetch_report_details(
         self,
@@ -121,7 +110,7 @@ class APIClient(BaseAPIClient):
             raise ReportNotFoundError(f"Unexpected response format for {slug!r}: expected dict, got {type(data).__name__}")
 
         logger.info("Fetched report details", slug=slug, market_type=market_type.value, params=params)
-        return ReportResponse.model_validate(data)
+        return ReportResponse(**data)
 
     @staticmethod
     def _calculate_last_days(prev_report_date: date) -> int:

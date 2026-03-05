@@ -48,7 +48,7 @@ class ReportDetail(SQLModel):
     published_date: ReportDateTime
     head_count: int
     avg_weight: float = Field(
-        validation_alias=AliasChoices("avg_weight", "wtd_avg_weight")
+        validation_alias=AliasChoices("avg_weight", "wtd_avg_weight", "wtd_avg_wt")
     )
     avg_price: float = Field(
         validation_alias=AliasChoices("avg_price", "wtd_Avg_Price", "wtd_avg_price")

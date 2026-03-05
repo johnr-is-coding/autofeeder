@@ -5,7 +5,9 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from app.config import settings
-from app.domain.agg_models import Auction, StoredReport, Reports # noqa: 'autogenerate' support
+from app.domain.models.auction import Auction
+from app.domain.models.stored_report import StoredReport
+from app.domain.models.report import Report
 
 config = context.config
 

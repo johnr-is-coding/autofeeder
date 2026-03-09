@@ -4,7 +4,9 @@ from enum import Enum
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defaultload, noload
 
+from app.domain.models.auction import Auction
 from app.domain.models.schemas import IncomingReport
 from app.domain.models.stored_report import StoredReport
 from app.infrastructure.api_client import APIClient
@@ -31,13 +33,13 @@ class ReportMonitor:
         self.session = session
 
     async def run_cycle(self) -> None:
-        incoming_reports = await self.api_client.fetch_current_reports()
-        stored_map = await self._load_stored_reports()
+        incoming_map = await self.api_client.fetch_current_reports()
+        stored_reports = await self._load_stored_reports()
 
-        for incoming in incoming_reports:
-            stored = stored_map.get(incoming.slug)
-            if stored is None:
-                logger.debug("Skipping untracked report slug", slug=incoming.slug)
+        for stored in stored_reports:
+            incoming = incoming_map.get(stored.slug)
+            if incoming is None:
+                logger.debug("Skipping untracked report slug", slug=stored.slug)
                 continue
 
             changes = self._detect_changes(stored, incoming)
@@ -46,25 +48,20 @@ class ReportMonitor:
 
     def _detect_changes(self, stored: StoredReport, incoming: IncomingReport) -> list[ReportChange]:
         """
-        Detect field-level changes between the stored and incoming LatestReport.
+        Detect a single change between the stored and incoming report.
 
-        Priority order (avoids duplicate events on the same cycle):
-          1. report_date changed    → NEW_REPORT_DATE (new reporting period; implies a new
-                                      published_date too, so we don't fire PUBLISHED_DATE_UPDATED)
-          2. published_date changed → PUBLISHED_DATE_UPDATED (correction to the existing period)
-          3. report_status changed  → STATUS_CHANGED (e.g. preliminary → final)
-
-        Cases 2 and 3 are not mutually exclusive — a correction could also flip the status.
+        Priority order (only the highest-priority change is returned):
+          1. report_date changed    → NEW_REPORT_DATE
+          2. report_status changed  → STATUS_CHANGED
+          3. published_date changed → PUBLISHED_DATE_UPDATED
         """
         if incoming.report_date != stored.report_date:
             return [ReportChange(stored.slug, ReportChangeType.NEW_REPORT_DATE, stored, incoming)]
-
-        changes = []
-        if incoming.published_date != stored.published_date:
-            changes.append(ReportChange(stored.slug, ReportChangeType.PUBLISHED_DATE_UPDATED, stored, incoming))
         if incoming.report_status != stored.report_status:
-            changes.append(ReportChange(stored.slug, ReportChangeType.STATUS_CHANGED, stored, incoming))
-        return changes
+            return [ReportChange(stored.slug, ReportChangeType.STATUS_CHANGED, stored, incoming)]
+        if incoming.published_date != stored.published_date:
+            return [ReportChange(stored.slug, ReportChangeType.PUBLISHED_DATE_UPDATED, stored, incoming)]
+        return []
 
     async def _dispatch(self, change: ReportChange) -> None:
         handlers = {
@@ -98,7 +95,12 @@ class ReportMonitor:
           - Build and insert a new Reports record from the ReportResponse
           - Upsert the LatestReport in the DB to reflect change.incoming
         """
-        pass
+        logger.info(
+            "Report date",
+            slug=change.slug,
+            from_report_date=str(change.stored.report_date),
+            to_report_date=str(change.incoming.report_date),
+        )
 
     async def _on_published_date_updated(self, change: ReportChange) -> None:
         """
@@ -113,7 +115,12 @@ class ReportMonitor:
           - Update the existing Reports record(s) with the corrected data
           - Update LatestReport.published_date in DB
         """
-        pass
+        logger.info(
+            "Report published date updated",
+            slug=change.slug,
+            from_published_date=str(change.stored.published_date),
+            to_published_date=str(change.incoming.published_date),
+        )
 
     async def _on_status_changed(self, change: ReportChange) -> None:
         """
@@ -138,6 +145,10 @@ class ReportMonitor:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _load_stored_reports(self) -> dict[str, StoredReport]:
-        result = await self.session.execute(select(StoredReport))
-        return {r.slug: r for r in result.scalars().all()}
+    async def _load_stored_reports(self) -> list[StoredReport]:
+        result = await self.session.execute(
+            select(StoredReport).options(
+                defaultload(StoredReport.auction).noload(Auction.reports)
+            )
+        )
+        return result.unique().scalars().all()

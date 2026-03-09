@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defaultload, noload
 
+from app.domain.models import report
 from app.domain.models.auction import Auction
 from app.domain.models.schemas import IncomingReport
 from app.domain.models.stored_report import StoredReport
@@ -101,6 +102,7 @@ class ReportMonitor:
             from_report_date=str(change.stored.report_date),
             to_report_date=str(change.incoming.report_date),
         )
+
 
     async def _on_published_date_updated(self, change: ReportChange) -> None:
         """

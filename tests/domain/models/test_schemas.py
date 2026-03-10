@@ -82,6 +82,7 @@ class TestReportDetail:
             "report_date": "06/01/2024",
             "report_end_date": "06/01/2024",
             "published_date": "06/02/2024 14:30:00",
+            "report_status": "Final",
             "head_count": 150,
             "avg_weight": "850.5",
             "avg_price": 350.5,
@@ -94,6 +95,7 @@ class TestReportDetail:
         assert detail.report_date == date(2024, 6, 1)
         assert detail.report_end_date == date(2024, 6, 1)
         assert detail.published_date == datetime(2024, 6, 2, 14, 30, 0)
+        assert detail.report_status == ReportStatus.FINAL
         assert detail.head_count == 150
         assert detail.avg_weight == 850.5
         assert detail.avg_price == 350.5
@@ -151,6 +153,7 @@ class TestReportResponse:
                     "report_date": "06/01/2024",
                     "report_end_date": "06/01/2024",
                     "published_date": "06/02/2024 14:30:00",
+                    "report_status": "Final",
                     "head_count": 150,
                     "avg_weight": "850.5",
                     "avg_price": 350.5,
@@ -169,6 +172,7 @@ class TestReportResponse:
         assert detail.report_date == date(2024, 6, 1)
         assert detail.report_end_date == date(2024, 6, 1)
         assert detail.published_date == datetime(2024, 6, 2, 14, 30, 0)
+        assert detail.report_status == ReportStatus.FINAL
         assert detail.head_count == 150
         assert detail.avg_weight == 850.5
         assert detail.avg_price == 350.5

@@ -1,4 +1,3 @@
-import uuid
 from datetime import date, datetime
 
 import pytest
@@ -36,23 +35,11 @@ class TestReport:
         assert report.price5 == 350.0
         assert report.auction_slug == "1234"
 
-    # --- UUID ---
-
-    def test_uuid_auto_generated(self, report_data):
-        report = Report.model_validate(report_data)
-        assert report.uuid is not None
-        assert isinstance(report.uuid, uuid.UUID)
-
-    def test_uuid_unique_per_instance(self, report_data):
-        report1 = Report.model_validate(report_data)
-        report2 = Report.model_validate(report_data)
-        assert report1.uuid != report2.uuid
-
     # --- Defaults ---
 
-    def test_region_defaults_to_none(self, report_data):
+    def test_region_defaults_to_empty(self, report_data):
         report = Report.model_validate(report_data)
-        assert report.region is None
+        assert report.region == Region.EMPTY
 
     def test_weight_class_slots_default_to_zero(self, report_data):
         report = Report.model_validate(report_data)

@@ -104,7 +104,12 @@ class TestReportDetail:
     def test_valid_construction_with_missing_region(self, report_detail_data):
         report_detail_data.pop("region_name")
         detail = ReportDetail(**report_detail_data)
-        assert detail.region is None
+        assert detail.region == Region.EMPTY
+
+    def test_valid_construction_with_null_region(self, report_detail_data):
+        report_detail_data["region_name"] = None
+        detail = ReportDetail(**report_detail_data)
+        assert detail.region == Region.EMPTY
 
     def test_valid_construction_with_video_aliases(self, report_detail_data):
         report_detail_data["wtd_avg_weight"] = report_detail_data.pop("avg_weight")

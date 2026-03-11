@@ -1,61 +1,29 @@
 from datetime import date, datetime
-import uuid as uuid_pkg
-from typing import Optional
 
-from sqlmodel import (
-    Index, 
-    SQLModel,
-    UniqueConstraint,
-    Column,
-    Field,
-    Relationship,
-    text
-)
+from pydantic import RootModel
+from sqlalchemy import Column
+from sqlmodel import SQLModel, Field, Relationship
 
 from app.domain.models.auction import Auction
-from app.utils.enums import Region, ReportStatus, ReportStatusEnum
+from app.utils.enums import Region, RegionEnum, ReportStatus, ReportStatusEnum
+
 
 class Report(SQLModel, table=True):
     __tablename__ = "reports"
-    
-    __table_args__ = (
-        # When region IS NULL (the common case)
-        Index(
-            "uq_reports_slug_date_no_region",
-            "auction_slug",
-            "report_date",
-            unique=True,
-            postgresql_where=text("region IS NULL"),
-        ),
-        # When region IS NOT NULL
-        UniqueConstraint(
-            "auction_slug",
-            "report_date",
-            "region",
-            name="uq_reports_slug_date_region",
-        ),
-    )
-    
-    uuid: uuid_pkg.UUID = Field(
-        default_factory=uuid_pkg.uuid4,
-        primary_key=True,
-        index=True,
-        nullable=False,
-        sa_column_kwargs={
-            "server_default": text("gen_random_uuid()"),
-            "unique": True
-        }
+
+    auction_slug: str = Field(foreign_key="auctions.slug", primary_key=True, ondelete="CASCADE")
+    report_date: date = Field(primary_key=True)
+    region: Region = Field(
+        default=Region.EMPTY,
+        sa_column=Column(RegionEnum, primary_key=True, nullable=False),
     )
 
-    report_date: date
     report_end_date: date
     published_date: datetime
 
-    # sa_column bypasses type inference — nullable=False IS needed here if required
     report_status: ReportStatus = Field(
         sa_column=Column(ReportStatusEnum, nullable=False)
     )
-    region: Optional[Region] = Field(default=None)
 
     head1: int = Field(default=0)
     weight1: float = Field(default=0.0)
@@ -78,6 +46,11 @@ class Report(SQLModel, table=True):
     weight5: float = Field(gt=0.0)
     price5: float = Field(gt=0.0)
 
-    auction_slug: str = Field(foreign_key="auctions.slug", ondelete="CASCADE")
     auction: Auction = Relationship(back_populates="reports")
-    
+
+
+class Reports(RootModel[list[Report]]):
+    root: list[Report]
+
+    def __iter__(self):
+        return iter(self.root)

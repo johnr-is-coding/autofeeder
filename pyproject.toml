@@ -30,7 +30,7 @@ mypy = "^1.19.1"
 
 [tool.poetry.scripts]
 test = "scripts.run_tests:main"
-snippet = "scripts.run_tests:test_snippet"
+snippet = "scripts.run_snippet:main"
 
 [build-system]
 requires = ["poetry-core"]

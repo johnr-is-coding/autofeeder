@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-
+from loguru import logger
 from app.domain.models.report import Report
 from app.domain.models.schemas import ReportDetail
+from app.utils.exceptions import TransformerError
 
 
 @dataclass
@@ -20,21 +21,25 @@ class ReportTransformer:
     ]
 
     def transform(self, details: list[ReportDetail], auction_slug: str) -> list[Report]:
-        groups = self._group_by_fields(details)
+        try:
+            groups = self._group_by_fields(details)
 
-        reports = []
-        for (report_date, region), group in groups.items():
-            first = group[0]
-            kwargs: dict = {
-                "report_date": report_date,
-                "region": region,
-                "auction_slug": auction_slug,
-                **self._create_report_header(first),
-                **self._aggregate_bins(group),
-            }
-            reports.append(Report(**kwargs))
+            reports = []
+            for (report_date, region), group in groups.items():
+                first = group[0]
+                kwargs: dict = {
+                    "report_date": report_date,
+                    "region": region,
+                    "auction_slug": auction_slug,
+                    **self._create_report_header(first),
+                    **self._aggregate_bins(group),
+                }
+                reports.append(Report(**kwargs))
 
-        return reports
+            return reports
+        except Exception as err:
+            logger.error("Failed to transform report details", slug=auction_slug, error=str(err))
+            raise TransformerError("An error occurred during data transformation") from err
     
     def _aggregate_bins(self, group: list[ReportDetail]) -> dict:
         kwargs = {}

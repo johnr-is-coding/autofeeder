@@ -1,18 +1,20 @@
-from ast import In
+from typing import TypeVar
 
 import aiohttp
 from typing import Any, Self
 from datetime import date
 from loguru import logger
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.config import settings
+from app.domain.models.report import Reports
 from app.domain.models.schemas import ReportResponse, IncomingReport
-from app.domain.models.stored_report import StoredReport
+
 from app.utils.enums import MarketType
+from app.utils.exceptions import APIClientError
 
-from app.utils.exceptions import APIClientError, ReportNotFoundError
 
+T = TypeVar("T", bound=BaseModel)
 
 class QueryBuilder:
     _BASE_FILTERS = (
@@ -42,7 +44,8 @@ class BaseAPIClient:
 
     async def __aenter__(self) -> Self:
         self.session = aiohttp.ClientSession(
-            auth=aiohttp.BasicAuth(self.api_key, "")
+            auth=aiohttp.BasicAuth(self.api_key, ""),
+            timeout=aiohttp.ClientTimeout(total=settings.DEFAULT_REQUEST_TIMEOUT)
         )
         return self
 
@@ -50,26 +53,30 @@ class BaseAPIClient:
         if self.session:
             await self.session.close()
 
-    async def _get(self, url: str, params: dict[str, Any] | None = None) -> Any:
+    async def _get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        response_model: type[T] | None = None,
+    ) -> T | Any:
         if not self.session:
             raise RuntimeError("Session not initialized. Use 'async with' to create as session")
         
-        async with self.session.get(
-            url,
-            params=params,
-            timeout=aiohttp.ClientTimeout(total=settings.DEFAULT_REQUEST_TIMEOUT)
-        ) as response:
+        async with self.session.get(url, params=params) as response:
             response.raise_for_status()
-            return await response.json()
+            data = await response.json()
+            if response_model:
+                return response_model(**data)
+            return data
         
 
 class APIClient(BaseAPIClient):
     
     def __init__(
-            self, 
+            self,
             base_url: str = settings.MMN_BASE_URL,
             api_version: str = settings.MMN_API_VERSION,
-            api_key: str = settings.MMN_API_KEY
+            api_key: str = settings.MMN_API_KEY,
         ) -> None:
         super().__init__(base_url, api_key)
         self.endpoint = f"{base_url}/{api_version}/reports"
@@ -77,40 +84,38 @@ class APIClient(BaseAPIClient):
 
     async def fetch_current_reports(self) -> dict[str, IncomingReport]:
         try:
-            data = await self._get(self.endpoint)
-        except aiohttp.ClientError as exc:
-            logger.error("Failed to fetch reports", endpoint=self.endpoint, error=str(exc))
-            raise APIClientError("Failed to fetch reports") from exc
+            data = await self._get(self.endpoint, response_model=Reports)
+            return {report.slug: report for report in data}
+
+        except aiohttp.ClientError as err:
+            logger.error("Failed to fetch reports", endpoint=self.endpoint, error=str(err))
+            raise APIClientError("Failed to fetch reports") from err
         
-        if not isinstance(data, list):
-            logger.warning("Unexpected response format", endpoint=self.endpoint, type=type(data).__name__)
-            return []
+        except ValidationError as err:
+            logger.error("Failed to parse report data", endpoint=self.endpoint, error=str(err))
+            raise APIClientError("Failed to parse report data") from err
         
-        reports = [IncomingReport(**item) for item in data]
-        logger.info("Fetched reports", endpoint=self.endpoint, count=len(reports))
-        return {report.slug: report for report in reports}
 
     async def fetch_report_details(
         self,
         slug: str,
         market_type: MarketType,
-        prev_report_date: date
-    ) -> ReportResponse:
+        prev_report_date: date,
+    ) -> ReportResponse | None:
         url = f"{self.endpoint}/{slug}/Report Details"
         params = self._build_report_params(market_type, prev_report_date)
 
         try:
-            data = await self._get(url, params=params)
-        except aiohttp.ClientError as exc:
-            logger.error("Failed to fetch report details", slug=slug, market_type=market_type.value, error=str(exc))
-            raise APIClientError(f"Failed to fetch report details for {slug!r}") from exc
-
-        if not isinstance(data, dict):
-            logger.warning("Unexpected response format", slug=slug, type=type(data).__name__)
-            raise ReportNotFoundError(f"Unexpected response format for {slug!r}: expected dict, got {type(data).__name__}")
-
-        logger.info("Fetched report details", slug=slug, market_type=market_type.value, params=params)
-        return ReportResponse(**data)
+            return await self._get(url, params=params, response_model=ReportResponse)
+        
+        except aiohttp.ClientError as err:
+            logger.error("Failed to fetch report details", slug=slug, market_type=market_type.value, error=str(err))
+            raise APIClientError(f"Failed to fetch report details for {slug!r}") from err
+        
+        except ValidationError as err:
+            logger.error("Failed to parse report details", slug=slug, market_type=market_type.value, error=str(err))
+            raise APIClientError(f"Failed to parse report details for {slug!r}") from err
+        
 
     @staticmethod
     def _calculate_last_days(prev_report_date: date) -> int:

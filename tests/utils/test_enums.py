@@ -34,8 +34,11 @@ class TestRegion:
     def test_south_central_value(self):
         assert Region.SOUTH_CENTRAL.value == "south central"
 
+    def test_empty_value(self):
+        assert Region.EMPTY.value == "empty"
+
     def test_all_members(self):
-        assert len(Region) == 2
+        assert len(Region) == 3
 
 
 class TestReportStatus:

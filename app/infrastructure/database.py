@@ -16,7 +16,7 @@ from app.config import settings
 def create_engine() -> AsyncEngine:
     return create_async_engine(
         settings.DB_ASYNC_CONNECTION_STR,
-        echo=settings.ENV == "development",
+        echo=settings.DB_ECHO,
         future=True,
         pool_pre_ping=True,
         pool_size=10,

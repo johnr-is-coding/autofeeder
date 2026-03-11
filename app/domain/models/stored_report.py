@@ -47,7 +47,8 @@ class StoredReport(SQLModel, table=True):
         sa_relationship=RelationshipProperty(
             "Auction",
             back_populates="stored_report",
-            single_parent=True
+            single_parent=True,
+            lazy="joined",
         )
     )
    

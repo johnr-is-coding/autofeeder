@@ -1,12 +1,10 @@
-from typing import Optional
-
 from sqlmodel import SQLModel, Field
 from pydantic import AliasChoices
 
 from app.utils.validators import ReportDate, ReportDateTime
-from app.utils.enums import MarketTypeField, Region, ReportStatus
+from app.utils.enums import MarketTypeField, RegionField, Region, ReportStatus
 
-   
+
 class IncomingReport(SQLModel):
     """
     Validation-only model for parsing raw API responses.
@@ -54,7 +52,7 @@ class ReportDetail(SQLModel):
     avg_price: float = Field(
         validation_alias=AliasChoices("avg_price", "wtd_Avg_Price", "wtd_avg_price")
     )
-    region: Optional[Region] = Field(default=None, alias="region_name")
+    region: RegionField = Field(default=Region.EMPTY, alias="region_name")
 
 
 class ReportStats(SQLModel):

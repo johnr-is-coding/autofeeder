@@ -26,6 +26,7 @@ class LowerStrEnum(str, Enum):
 # -------------------------------------------------------------------
 
 class Region(LowerStrEnum):
+    EMPTY = "empty"
     NORTH_CENTRAL = "north central"
     SOUTH_CENTRAL = "south central"
 
@@ -40,7 +41,7 @@ class MarketType(str, Enum):
 
 
 # -------------------------------------------------------------------
-# Market Type Field (Pydantic annotated type with input normalization)
+# Model Type Field (Pydantic annotated type with input normalization)
 # -------------------------------------------------------------------
 
 MARKET_TYPE_MAPPING = {
@@ -61,6 +62,9 @@ MarketTypeField = Annotated[
     Optional[MarketType],
     BeforeValidator(normalize_market_type),
 ]
+
+RegionField = Annotated[Region, BeforeValidator(lambda v: Region.EMPTY if v is None else v)]
+
 
 # -------------------------------------------------------------------
 # PostgreSQL ENUMS

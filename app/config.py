@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     DB_SYNC_CONNECTION_STR: Optional[str] = None
     DB_ASYNC_CONNECTION_STR: Optional[str] = None
 
+    DB_ECHO: bool = Field(False, description="Enable SQL query logging")
     DB_POOL_SIZE: int = Field(10, description="Number of connections in the pool")
     DB_MAX_OVERFLOW: int = Field(20, description="Max connections above pool_size")
     DB_POOL_TIMEOUT: int = Field(30, description="Seconds to wait for a connection from the pool")

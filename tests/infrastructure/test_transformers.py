@@ -120,8 +120,8 @@ class TestGroupByFields:
         ]
         groups = ReportTransformer._group_by_fields(details)
         assert len(groups) == 2
-        assert (date1, None) in groups
-        assert (date2, None) in groups
+        assert (date1, Region.EMPTY) in groups
+        assert (date2, Region.EMPTY) in groups
 
     def test_groups_by_region(self):
         details = [
@@ -179,4 +179,4 @@ class TestTransform:
         ]
         reports = transformer.transform(details, SLUG)
         regions = {r.region for r in reports}
-        assert regions == {Region.NORTH_CENTRAL, Region.SOUTH_CENTRAL, None}
+        assert regions == {Region.NORTH_CENTRAL, Region.SOUTH_CENTRAL, Region.EMPTY}

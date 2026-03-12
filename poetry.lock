@@ -1784,6 +1784,27 @@ pydantic = ">=2.7.0"
 SQLAlchemy = ">=2.0.14,<2.1.0"
 
 [[package]]
+name = "tqdm"
+version = "4.67.3"
+description = "Fast, Extensible Progress Meter"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "tqdm-4.67.3-py3-none-any.whl", hash = "sha256:ee1e4c0e59148062281c49d80b25b67771a127c85fc9676d3be5f243206826bf"},
+    {file = "tqdm-4.67.3.tar.gz", hash = "sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb"},
+]
+
+[package.dependencies]
+colorama = {version = "*", markers = "platform_system == \"Windows\""}
+
+[package.extras]
+dev = ["nbval", "pytest (>=6)", "pytest-asyncio (>=0.24)", "pytest-cov", "pytest-timeout"]
+discord = ["requests"]
+notebook = ["ipywidgets (>=6)"]
+slack = ["slack-sdk"]
+telegram = ["requests"]
+
+[[package]]
 name = "typer"
 version = "0.23.2"
 description = "Typer, build great CLIs. Easy to code. Based on Python type hints."
@@ -1986,4 +2007,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "6b5b25ec5eccb9dfcf7e14ae2a6cce1648d0414ad5708a3a04f3a187dc8c8d96"
+content-hash = "e0a5d7f6701ebd9fbdf018e3c7ec30e3247bcaba23ccbd4b413c7f5dd6961de1"

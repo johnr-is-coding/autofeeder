@@ -5,10 +5,10 @@ from app.config import settings
 def setup_logging() -> None:
     logger.remove()
     logger.add(
-        sys.stdout, 
+        sys.stdout,
         level=settings.LOG_LEVEL,
-        format="[{time:HH:mm:ss}] >> {name}:{line} >> {level}: {message} >> {extra}",
+        serialize=True,
         enqueue=True,
         backtrace=True,
-        diagnose=settings.DEBUG
+        diagnose=settings.DEBUG,
     )

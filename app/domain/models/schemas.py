@@ -44,7 +44,7 @@ class ReportDetail(SQLModel):
     report_date: ReportDate
     report_end_date: ReportDate
     published_date: ReportDateTime
-    report_status: ReportStatus
+    report_status: ReportStatus = Field(alias="final_ind")
     head_count: int
     avg_weight: float = Field(
         validation_alias=AliasChoices("avg_weight", "wtd_avg_weight", "wtd_avg_wt")
@@ -66,4 +66,3 @@ class ReportResponse(SQLModel):
     @property
     def row_count(self) -> int:
         return self.stats.returned_rows
-    

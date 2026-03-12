@@ -13,6 +13,7 @@ from app.infrastructure.database import (
     get_conn,
     get_db,
 )
+from app.utils.exceptions import DatabaseError
 
 
 class TestCreateEngine:
@@ -29,7 +30,7 @@ class TestCreateEngine:
             create_engine()
             mock.assert_called_once_with(
                 settings.DB_ASYNC_CONNECTION_STR,
-                echo=settings.ENV == "development",
+                echo=settings.DB_ECHO,
                 future=True,
                 pool_pre_ping=True,
                 pool_size=10,
@@ -82,7 +83,7 @@ class TestGetDb:
         with patch("app.infrastructure.database.AsyncSessionLocal", factory):
             gen = get_db()
             await gen.asend(None)
-            with pytest.raises(SQLAlchemyError):
+            with pytest.raises(DatabaseError):
                 await gen.athrow(SQLAlchemyError("db error"))
         mock_session.rollback.assert_awaited_once()
 
@@ -91,7 +92,7 @@ class TestGetDb:
         with patch("app.infrastructure.database.AsyncSessionLocal", factory):
             gen = get_db()
             await gen.asend(None)
-            with pytest.raises(RuntimeError):
+            with pytest.raises(DatabaseError):
                 await gen.athrow(RuntimeError("unexpected"))
         mock_session.rollback.assert_awaited_once()
 
@@ -101,9 +102,9 @@ class TestGetDb:
         with patch("app.infrastructure.database.AsyncSessionLocal", factory):
             gen = get_db()
             await gen.asend(None)
-            with pytest.raises(SQLAlchemyError) as exc_info:
+            with pytest.raises(DatabaseError) as exc_info:
                 await gen.athrow(error)
-        assert exc_info.value is error
+        assert isinstance(exc_info.value.__cause__, SQLAlchemyError)
 
     async def test_reraises_generic_exception(self, mock_factory):
         factory, _ = mock_factory
@@ -111,9 +112,9 @@ class TestGetDb:
         with patch("app.infrastructure.database.AsyncSessionLocal", factory):
             gen = get_db()
             await gen.asend(None)
-            with pytest.raises(RuntimeError) as exc_info:
+            with pytest.raises(DatabaseError) as exc_info:
                 await gen.athrow(error)
-        assert exc_info.value is error
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
 class TestGetConn:
@@ -142,9 +143,9 @@ class TestGetConn:
         with patch("app.infrastructure.database.engine", engine):
             gen = get_conn()
             await gen.asend(None)
-            with pytest.raises(SQLAlchemyError) as exc_info:
+            with pytest.raises(DatabaseError) as exc_info:
                 await gen.athrow(error)
-        assert exc_info.value is error
+        assert isinstance(exc_info.value.__cause__, SQLAlchemyError)
 
 
 class TestDisposeEngine:
@@ -159,5 +160,5 @@ class TestDisposeEngine:
         mock_engine = AsyncMock(spec=AsyncEngine)
         mock_engine.dispose.side_effect = SQLAlchemyError("dispose error")
         with patch("app.infrastructure.database.engine", mock_engine):
-            with pytest.raises(SQLAlchemyError):
+            with pytest.raises(DatabaseError):
                 await dispose_engine()

@@ -48,6 +48,8 @@ MARKET_TYPE_MAPPING = {
     "auction livestock": MarketType.LIVE,
     "direct livestock": MarketType.DIRECT,
     "video auction livestock": MarketType.VIDEO,
+    "auction livestock (special)": MarketType.LIVE,
+    "auction livestock (special graded)": MarketType.LIVE,
 }
 
 def normalize_market_type(value: Any) -> Optional[MarketType]:

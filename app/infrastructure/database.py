@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
+from app.utils.exceptions import DatabaseError
 
 
 def create_engine() -> AsyncEngine:
@@ -43,12 +44,24 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         except SQLAlchemyError as e:
             await session.rollback()
-            logger.exception("Database error — session rolled back: %s", e)
-            raise
+            logger.exception(
+                "Database error; session rolled back",
+                event="db_session_failed",
+                operation="get_db",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            raise DatabaseError("Database session operation failed") from e
         except Exception as e:
             await session.rollback()
-            logger.exception("Unexpected error — session rolled back: %s", e)
-            raise
+            logger.exception(
+                "Unexpected database session error; session rolled back",
+                event="db_session_unexpected",
+                operation="get_db",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            raise DatabaseError("Unexpected error during database session operation") from e
 
 
 async def get_conn() -> AsyncGenerator[AsyncConnection, None]:
@@ -56,14 +69,30 @@ async def get_conn() -> AsyncGenerator[AsyncConnection, None]:
         async with engine.begin() as conn:
             yield conn
     except SQLAlchemyError as e:
-        logger.exception("Database connection error: %s", e)
-        raise
+        logger.exception(
+            "Database connection error",
+            event="db_connection_failed",
+            operation="get_conn",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise DatabaseError("Database connection operation failed") from e
 
 
 async def dispose_engine() -> None:
     try:
         await engine.dispose()
-        logger.info("Database engine disposed successfully")
+        logger.info(
+            "Database engine disposed successfully",
+            event="db_engine_disposed",
+            operation="dispose_engine",
+        )
     except SQLAlchemyError as e:
-        logger.exception("Error disposing database engine: %s", e)
-        raise
+        logger.exception(
+            "Database engine disposal failed",
+            event="db_engine_dispose_failed",
+            operation="dispose_engine",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise DatabaseError("Database engine disposal failed") from e

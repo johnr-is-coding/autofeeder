@@ -22,6 +22,13 @@ class ReportTransformer:
 
     def transform(self, details: list[ReportDetail], auction_slug: str) -> list[Report]:
         try:
+            logger.debug(
+                "Transform started",
+                event="transform_start",
+                operation="transform_report_details",
+                slug=auction_slug,
+                detail_count=len(details),
+            )
             groups = self._group_by_fields(details)
 
             reports = []
@@ -36,9 +43,24 @@ class ReportTransformer:
                 }
                 reports.append(Report(**kwargs))
 
+            logger.debug(
+                "Transform completed",
+                event="transform_complete",
+                operation="transform_report_details",
+                slug=auction_slug,
+                group_count=len(groups),
+                report_count=len(reports),
+            )
             return reports
         except Exception as err:
-            logger.error("Failed to transform report details", slug=auction_slug, error=str(err))
+            logger.exception(
+                "Transform failed",
+                event="transform_failed",
+                operation="transform_report_details",
+                slug=auction_slug,
+                error=str(err),
+                error_type=type(err).__name__,
+            )
             raise TransformerError("An error occurred during data transformation") from err
     
     def _aggregate_bins(self, group: list[ReportDetail]) -> dict:

@@ -16,6 +16,7 @@ from app.infrastructure.database import (
     get_conn,
     get_db,
 )
+from app.utils.exceptions import DatabaseError
 
 
 @pytest.mark.integration
@@ -64,30 +65,30 @@ class TestGetDbIntegration:
     async def test_rolls_back_on_sqlalchemy_error(self):
         gen = get_db()
         await gen.asend(None)
-        with pytest.raises(SQLAlchemyError):
+        with pytest.raises(DatabaseError):
             await gen.athrow(SQLAlchemyError("forced rollback"))
 
     async def test_rolls_back_on_generic_exception(self):
         gen = get_db()
         await gen.asend(None)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(DatabaseError):
             await gen.athrow(RuntimeError("forced rollback"))
 
     async def test_reraises_sqlalchemy_error(self):
         error = SQLAlchemyError("forced")
         gen = get_db()
         await gen.asend(None)
-        with pytest.raises(SQLAlchemyError) as exc_info:
+        with pytest.raises(DatabaseError) as exc_info:
             await gen.athrow(error)
-        assert exc_info.value is error
+        assert isinstance(exc_info.value.__cause__, SQLAlchemyError)
 
     async def test_reraises_generic_exception(self):
         error = RuntimeError("forced")
         gen = get_db()
         await gen.asend(None)
-        with pytest.raises(RuntimeError) as exc_info:
+        with pytest.raises(DatabaseError) as exc_info:
             await gen.athrow(error)
-        assert exc_info.value is error
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
 @pytest.mark.integration
@@ -104,9 +105,9 @@ class TestGetConnIntegration:
         error = SQLAlchemyError("forced")
         gen = get_conn()
         await gen.asend(None)
-        with pytest.raises(SQLAlchemyError) as exc_info:
+        with pytest.raises(DatabaseError) as exc_info:
             await gen.athrow(error)
-        assert exc_info.value is error
+        assert isinstance(exc_info.value.__cause__, SQLAlchemyError)
 
 
 @pytest.mark.integration

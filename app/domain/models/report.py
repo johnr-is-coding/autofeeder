@@ -1,7 +1,7 @@
 from datetime import date, datetime
 
 from pydantic import RootModel
-from sqlalchemy import Column
+from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import SQLModel, Field, Relationship
 
 from app.domain.models.auction import Auction
@@ -10,6 +10,9 @@ from app.utils.enums import Region, RegionEnum, ReportStatus, ReportStatusEnum
 
 class Report(SQLModel, table=True):
     __tablename__ = "reports"
+    __table_args__ = (
+        UniqueConstraint("auction_slug", "report_date", "region", name="uq_report_slug_date_region"),
+    )
 
     auction_slug: str = Field(foreign_key="auctions.slug", primary_key=True, ondelete="CASCADE")
     report_date: date = Field(primary_key=True)
@@ -47,10 +50,3 @@ class Report(SQLModel, table=True):
     price5: float = Field(gt=0.0)
 
     auction: Auction = Relationship(back_populates="reports")
-
-
-class Reports(RootModel[list[Report]]):
-    root: list[Report]
-
-    def __iter__(self):
-        return iter(self.root)

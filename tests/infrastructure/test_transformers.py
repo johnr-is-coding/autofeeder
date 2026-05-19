@@ -1,10 +1,12 @@
 from datetime import date, datetime
+from unittest.mock import patch
 
 import pytest
 
 from app.domain.models.schemas import ReportDetail
 from app.infrastructure.transformers import ReportTransformer
 from app.utils.enums import Region, ReportStatus
+from app.utils.exceptions import TransformerError
 
 SLUG = "test-auction"
 PUB_DATE = datetime(2024, 1, 15, 8, 0, 0)
@@ -24,7 +26,7 @@ def make_detail(
         "report_date": report_date.strftime("%m/%d/%Y"),
         "report_end_date": END_DATE.strftime("%m/%d/%Y"),
         "published_date": PUB_DATE.strftime("%m/%d/%Y %H:%M:%S"),
-        "report_status": report_status,
+        "final_ind": report_status,
         "head_count": head_count,
         "avg_weight": avg_weight,
         "avg_price": avg_price,
@@ -32,10 +34,18 @@ def make_detail(
     })
 
 
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
 @pytest.fixture
 def transformer():
     return ReportTransformer()
 
+
+# ---------------------------------------------------------------------------
+# _aggregate
+# ---------------------------------------------------------------------------
 
 class TestAggregate:
     def test_empty_returns_zeros(self, transformer):
@@ -64,6 +74,10 @@ class TestAggregate:
         assert weight == pytest.approx(775.0)
         assert price == pytest.approx(175.0)
 
+
+# ---------------------------------------------------------------------------
+# _aggregate_bins
+# ---------------------------------------------------------------------------
 
 class TestAggregateBins:
     def test_bins_empty_group_returns_zeros(self, transformer):
@@ -109,6 +123,19 @@ class TestAggregateBins:
         assert result["weight5"] == pytest.approx((5 * 710 + 10 * 810) / 15)
         assert result["price5"] == pytest.approx((5 * 100 + 10 * 200) / 15)
 
+    def test_weight_outside_bins_only_counts_in_total(self, transformer):
+        # Weight below 700 doesn't fall in bins 1–4 but still counts toward bin 5
+        result = transformer._aggregate_bins([make_detail(avg_weight=650.0, head_count=5)])
+        assert result["head1"] == 0
+        assert result["head2"] == 0
+        assert result["head3"] == 0
+        assert result["head4"] == 0
+        assert result["head5"] == 5
+
+
+# ---------------------------------------------------------------------------
+# _group_by_fields
+# ---------------------------------------------------------------------------
 
 class TestGroupByFields:
     def test_groups_by_report_date(self):
@@ -141,6 +168,13 @@ class TestGroupByFields:
         assert len(groups) == 1
         assert len(list(groups.values())[0]) == 2
 
+    def test_empty_input_returns_empty_dict(self):
+        assert ReportTransformer._group_by_fields([]) == {}
+
+
+# ---------------------------------------------------------------------------
+# _create_report_header
+# ---------------------------------------------------------------------------
 
 class TestCreateReportHeader:
     def test_extracts_header_fields(self):
@@ -150,6 +184,10 @@ class TestCreateReportHeader:
         assert header["published_date"] == PUB_DATE
         assert header["report_status"] == ReportStatus.PRELIMINARY
 
+
+# ---------------------------------------------------------------------------
+# transform
+# ---------------------------------------------------------------------------
 
 class TestTransform:
     def test_returns_one_report_per_group(self, transformer):
@@ -161,6 +199,10 @@ class TestTransform:
         ]
         reports = transformer.transform(details, SLUG)
         assert len(reports) == 2
+
+    def test_empty_details_returns_empty_list(self, transformer):
+        reports = transformer.transform([], SLUG)
+        assert reports == []
 
     def test_report_metadata(self, transformer):
         detail = make_detail(avg_weight=720.0, report_status=ReportStatus.PRELIMINARY)
@@ -180,3 +222,10 @@ class TestTransform:
         reports = transformer.transform(details, SLUG)
         regions = {r.region for r in reports}
         assert regions == {Region.NORTH_CENTRAL, Region.SOUTH_CENTRAL, Region.EMPTY}
+
+    def test_internal_error_raises_transformer_error(self, transformer):
+        with patch.object(
+            ReportTransformer, "_group_by_fields", side_effect=ValueError("broken")
+        ):
+            with pytest.raises(TransformerError):
+                transformer.transform([make_detail(avg_weight=720.0)], SLUG)

@@ -19,6 +19,15 @@ from app.infrastructure.transformers import ReportTransformer
 from app.utils.enums import MarketType
 from app.utils.exceptions import APIClientError, DatabaseError, ServiceError, TransformerError
 
+        
+_REPORT_UPDATE_COLS = [
+    "report_end_date", "published_date", "report_status",
+    "head1", "weight1", "price1",
+    "head2", "weight2", "price2",
+    "head3", "weight3", "price3",
+    "head4", "weight4", "price4",
+    "head5", "weight5", "price5",
+]
 
 @dataclass
 class ReportChange:
@@ -59,6 +68,7 @@ class ReportMonitor:
         if not changes:
             logger.info("No report changes detected")
             return
+        
         logger.info(
             "Report changes detected",
             event="report_changes_detected",
@@ -73,14 +83,27 @@ class ReportMonitor:
 
         failed_slugs: list[str] = []
         for change, reports in tqdm(zip(changes, fetched), total=len(changes), desc="Processing report changes"):
-            if isinstance(reports, Exception):
-                logger.error("Error generating reports", slug=change.slug, error=str(reports))
+            if isinstance(reports, BaseException):
+                logger.error(
+                    "Error generating reports",
+                    event="generate_reports_exception",
+                    operation="run_cycle",
+                    slug=change.slug,
+                    error=str(reports),
+                    error_type=type(reports).__name__,
+                )
                 failed_slugs.append(change.slug)
                 continue
 
             try:
-                await self._upsert_reports(reports)
-                await self._upsert_stored_report(change.incoming)
+                if not reports:
+                    logger.debug(
+                        "No reports generated for slug",
+                        event="generate_reports_empty",
+                        operation="run_cycle",
+                        slug=change.slug,
+                    )
+                await self._persist_report_update(reports, change.incoming)
                 logger.info("Updated report and stored report", slug=change.slug)
             except DatabaseError as err:
                 logger.error(
@@ -92,10 +115,8 @@ class ReportMonitor:
                     error_type=type(err).__name__,
                 )
                 failed_slugs.append(change.slug)
-                continue
 
         if failed_slugs:
-            # Fail the cycle explicitly so upstream error boundaries can apply retry policy.
             logger.warning(
                 "Cycle completed with failed slugs",
                 event="run_cycle_partial_failure",
@@ -112,7 +133,11 @@ class ReportMonitor:
             processed_changes=len(changes),
         )
 
-    def _get_changes(self, stored_reports: list[StoredReport], incoming_map: dict[str, IncomingReport]) -> list[ReportChange]:
+    def _get_changes(
+            self, 
+            stored_reports: list[StoredReport], 
+            incoming_map: dict[str, IncomingReport]
+    ) -> list[ReportChange]:
         changes = []
         for stored in stored_reports:
             incoming = incoming_map.get(stored.slug)
@@ -126,6 +151,7 @@ class ReportMonitor:
 
     async def _generate_reports(self, slug: str, market_type: MarketType) -> list[Report]:
         try:
+            started_at = perf_counter()
             logger.debug(
                 "Generating reports for slug",
                 event="generate_reports_start",
@@ -135,6 +161,7 @@ class ReportMonitor:
             )
             data = await self.api_client.fetch_report_details(slug, market_type)
             reports = self.transformer.transform(data.results, slug)
+            elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
             logger.debug(
                 "Generated reports for slug",
                 event="generate_reports_complete",
@@ -142,6 +169,7 @@ class ReportMonitor:
                 slug=slug,
                 market_type=market_type.value,
                 generated_count=len(reports),
+                elapsed_ms=elapsed_ms,
             )
             return reports
         except (APIClientError, TransformerError) as err:
@@ -163,53 +191,21 @@ class ReportMonitor:
             incoming.report_status != stored.report_status or
             incoming.published_date != stored.published_date
         )
-        
-        
-    _REPORT_UPDATE_COLS = [
-        "report_end_date", "published_date", "report_status",
-        "head1", "weight1", "price1",
-        "head2", "weight2", "price2",
-        "head3", "weight3", "price3",
-        "head4", "weight4", "price4",
-        "head5", "weight5", "price5",
-    ]
 
-    async def _upsert_reports(self, reports: list[Report]) -> None:
+    async def _persist_report_update(self, reports: list[Report], incoming: IncomingReport) -> None:
+        """Upsert reports and the stored report in a single transaction"""
         try:
             started_at = perf_counter()
-            rows = [r.model_dump(exclude={"auction"}) for r in reports]
-            stmt = pg_insert(Report).values(rows)
-            stmt = stmt.on_conflict_do_update(
+
+            rows =[r.model_dump() for r in reports]
+            report_stmt = pg_insert(Report).values(rows)
+            report_stmt = report_stmt.on_conflict_do_update(
                 constraint="uq_report_slug_date_region",
-                set_={col: stmt.excluded[col] for col in self._REPORT_UPDATE_COLS},
+                set_={col: report_stmt.excluded[col] for col in _REPORT_UPDATE_COLS},
             )
-            await self.session.execute(stmt)
-            await self.session.commit()
-            elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
-            logger.debug(
-                "Upserted report rows",
-                event="db_upsert_reports_complete",
-                operation="upsert_reports",
-                row_count=len(rows),
-                elapsed_ms=elapsed_ms,
-            )
-        except SQLAlchemyError as err:
-            await self.session.rollback()
-            logger.exception(
-                "Report upsert failed",
-                event="db_upsert_reports_failed",
-                operation="upsert_reports",
-                row_count=len(reports),
-                error=str(err),
-                error_type=type(err).__name__,
-            )
-            raise DatabaseError("Failed to upsert report rows") from err
+            await self.session.execute(report_stmt)
 
-
-    async def _upsert_stored_report(self, incoming: IncomingReport) -> None:
-        try:
-            started_at = perf_counter()
-            data = {
+            stored_data = {
                 "slug": incoming.slug,
                 "report_date": incoming.report_date,
                 "published_date": incoming.published_date,
@@ -217,33 +213,35 @@ class ReportMonitor:
                 "market_type": incoming.market_type,
                 "has_corrections": incoming.has_corrections,
             }
-            stmt = pg_insert(StoredReport).values(data)
-            stmt = stmt.on_conflict_do_update(
+            stored_stmt = pg_insert(StoredReport).values(stored_data)
+            stored_stmt = stored_stmt.on_conflict_do_update(
                 index_elements=["slug"],
-                set_={k: stmt.excluded[k] for k in data if k != "slug"},
+                set_={k: stored_stmt.excluded[k] for k in stored_data if k != "slug"},
             )
-            await self.session.execute(stmt)
+            await self.session.execute(stored_stmt)
+
             await self.session.commit()
             elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
             logger.debug(
-                "Upserted stored report row",
-                event="db_upsert_stored_report_complete",
-                operation="upsert_stored_report",
+                "Persisted report updates",
+                event="db_persist_report_updates_complete",
+                operation="_persist_report_update",
                 slug=incoming.slug,
+                row_count=len(reports),
                 elapsed_ms=elapsed_ms,
             )
         except SQLAlchemyError as err:
             await self.session.rollback()
             logger.exception(
-                "Stored report upsert failed",
-                event="db_upsert_stored_report_failed",
-                operation="upsert_stored_report",
+                "Failed to persist report update",
+                event="db_persist_report_update_failed",
+                operation="_persist_report_update",
                 slug=incoming.slug,
+                row_count=len(reports),
                 error=str(err),
                 error_type=type(err).__name__,
             )
-            raise DatabaseError("Failed to upsert stored report row") from err
-
+            raise DatabaseError(f"Failed to persist report update") from err
 
     async def _load_stored_reports(self) -> list[StoredReport]:
         try:

@@ -10,22 +10,22 @@ def setup_logging() -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "autofeeder.log"
 
-    # logger.add(
-    #     sys.stdout,
-    #     level=settings.LOG_LEVEL,
-    #     serialize=True,
-    #     enqueue=True,
-    #     backtrace=True,
-    #     diagnose=settings.DEBUG,
-    # )
-
     logger.add(
-        log_file,
+        sys.stdout,
         level=settings.LOG_LEVEL,
         serialize=True,
         enqueue=True,
         backtrace=True,
         diagnose=settings.DEBUG,
-        rotation="10 MB",
-        retention="14 days",
     )
+
+    # logger.add(
+    #     log_file,
+    #     level=settings.LOG_LEVEL,
+    #     serialize=True,
+    #     enqueue=True,
+    #     backtrace=True,
+    #     diagnose=settings.DEBUG,
+    #     rotation="10 MB",
+    #     retention="14 days",
+    # )

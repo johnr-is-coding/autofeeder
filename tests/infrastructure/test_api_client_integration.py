@@ -53,7 +53,7 @@ class TestFetchReportDetailsIntegration:
         report = live[0]
         prev_date = report.report_date - timedelta(days=7)
         async with APIClient() as client:
-            result = await client.fetch_report_details(report.slug, MarketType.LIVE, prev_date)
+            result = await client.fetch_report_details(report.slug, MarketType.LIVE)
         assert isinstance(result, ReportResponse)
 
     async def test_video_market_returns_report_response(self, reports):
@@ -64,7 +64,7 @@ class TestFetchReportDetailsIntegration:
         logger.info("Testing VIDEO market report details", slug=report.slug, report_date=report.report_date, published_date=report.published_date)
         prev_date = report.report_date - timedelta(days=7)
         async with APIClient() as client:
-            result = await client.fetch_report_details(report.slug, MarketType.VIDEO, prev_date)
+            result = await client.fetch_report_details(report.slug, MarketType.VIDEO)
         assert isinstance(result, ReportResponse)
 
     async def test_direct_market_returns_report_response(self, reports):
@@ -75,7 +75,7 @@ class TestFetchReportDetailsIntegration:
         logger.info("Testing DIRECT market report details", slug=report.slug, report_date=report.report_date, published_date=report.published_date)
         prev_date = report.report_date - timedelta(days=7)
         async with APIClient() as client:
-            result = await client.fetch_report_details(report.slug, MarketType.DIRECT, prev_date)
+            result = await client.fetch_report_details(report.slug, MarketType.DIRECT)
         assert isinstance(result, ReportResponse)
 
     async def test_result_has_stats_and_results(self, reports):
@@ -85,7 +85,7 @@ class TestFetchReportDetailsIntegration:
         report = available[0]
         prev_date = report.report_date - timedelta(days=7)
         async with APIClient() as client:
-            result = await client.fetch_report_details(report.slug, report.market_type, prev_date)
+            result = await client.fetch_report_details(report.slug, report.market_type)
         assert isinstance(result.results, list)
         assert isinstance(result.row_count, int)
 

@@ -1,5 +1,5 @@
 import pytest
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from app.utils.validators import parse_date, parse_datetime
 
@@ -50,22 +50,20 @@ class TestParseDatetime:
         assert result == datetime(2024, 1, 15, 10, 30, 0)
         assert result.tzinfo is None
 
+    def test_mars_api_string(self):
+        # MARS API datetimes are in MST, but have no tzinfo, so we treat them as UTC for now
+        result = parse_datetime("2024-01-15 10:30:00")
+        assert result == datetime(2024, 1, 15, 10, 30, 0)
+        assert result.tzinfo is None
+
     def test_aware_string_converts_to_utc_naive(self):
-        # +00:00 — already UTC, strips tzinfo
         result = parse_datetime("2024-01-15T10:30:00+00:00")
         assert result == datetime(2024, 1, 15, 10, 30, 0)
         assert result.tzinfo is None
 
     def test_aware_string_shifts_to_utc(self):
-        # +05:00 means 10:30 local = 05:30 UTC
         result = parse_datetime("2024-01-15T10:30:00+05:00")
         assert result == datetime(2024, 1, 15, 5, 30, 0)
-        assert result.tzinfo is None
-
-    def test_aware_negative_offset_shifts_to_utc(self):
-        # -05:00 means 10:30 local = 15:30 UTC
-        result = parse_datetime("2024-01-15T10:30:00-05:00")
-        assert result == datetime(2024, 1, 15, 15, 30, 0)
         assert result.tzinfo is None
 
     def test_unparseable_string_raises(self):

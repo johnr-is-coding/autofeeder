@@ -5,10 +5,6 @@ from pydantic import BeforeValidator
 from sqlalchemy.dialects import postgresql
 
 
-# -------------------------------------------------------------------
-# Base Enum (case insensitive matching)
-# -------------------------------------------------------------------
-
 class LowerStrEnum(str, Enum):
     @classmethod
     def _missing_(cls, value):

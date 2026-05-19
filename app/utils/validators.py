@@ -4,7 +4,8 @@ from dateutil.parser import parse
 
 from pydantic import BeforeValidator
 
-
+# Need to confirm this is only called on external data,
+# but overly defensive parsing for now.
 def parse_date(value: Any) -> date:
     if isinstance(value, datetime):
         return value.date()
@@ -12,7 +13,8 @@ def parse_date(value: Any) -> date:
         return value
     return parse(value).date()
 
-
+# Again should only be external data arriving.
+# MARS API doesnt have timezone info, but are in MDT (maybe)
 def parse_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
         return value

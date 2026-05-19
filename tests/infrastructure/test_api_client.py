@@ -1,57 +1,61 @@
-from datetime import date, timedelta
+import pytest
+import aiohttp
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import aiohttp
-import pytest
-
-from app.domain.models.schemas import IncomingReport, ReportResponse
 from app.infrastructure.api_client import APIClient, BaseAPIClient, QueryBuilder
 from app.utils.enums import MarketType
 from app.utils.exceptions import APIClientError, ReportNotFoundError
 
+BASE_URL = "https://api.example.com"
+API_VERSION = "v1"
+API_KEY = "test-key"
 
-# ---------------------------------------------------------------------------
-# Shared fixtures / sample data
-# ---------------------------------------------------------------------------
-
-INCOMING_REPORT_DATA = {
-    "slug_id": "2497",
-    "report_date": "01/15/2024",
-    "published_date": "01/15/2024 10:00:00",
+RAW_INCOMING_REPORT = {
+    "slug_id": "1234",
+    "report_date": "03/19/2026",
+    "published_date": "03/19/2026 08:00:00",
     "report_status": "Final",
     "market_types": ["Auction Livestock"],
     "hasCorrectionsInLastThreeDays": False,
 }
 
-REPORT_DETAIL_DATA = {
-    "report_date": "01/15/2024",
-    "report_end_date": "01/15/2024",
-    "published_date": "01/15/2024 10:00:00",
-    "head_count": 150,
-    "avg_weight": 850.5,
-    "avg_price": 175.0,
+RAW_REPORT_DETAIL = {
+    "report_date": "03/19/2026",
+    "report_end_date": "03/19/2026",
+    "published_date": "03/19/2026 08:00:00",
+    "final_ind": "Final",
+    "head_count": 100,
+    "avg_weight": 850.0,
+    "avg_price": 150.0,
     "region_name": None,
 }
 
-REPORT_RESPONSE_DATA = {
-    "results": [REPORT_DETAIL_DATA],
+RAW_REPORT_RESPONSE = {
+    "results": [RAW_REPORT_DETAIL],
     "stats": {"returnedRows": 1},
 }
 
 
-def _make_mock_session(return_value, raise_for_status_effect=None):
-    """Build a mock aiohttp session whose .get() context manager returns return_value."""
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock(side_effect=raise_for_status_effect)
-    mock_response.json = AsyncMock(return_value=return_value)
+@pytest.fixture
+def client():
+    return APIClient(base_url=BASE_URL, api_version=API_VERSION, api_key=API_KEY)
 
-    mock_cm = MagicMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_cm.__aexit__ = AsyncMock(return_value=False)
 
-    mock_session = MagicMock()
-    mock_session.get = MagicMock(return_value=mock_cm)
-    return mock_session, mock_response
+@pytest.fixture
+def base_client():
+    return BaseAPIClient(base_url=BASE_URL, api_key=API_KEY)
+
+
+def make_mock_response(json_data=None, raise_on_status=None):
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=json_data)
+    mock_response.raise_for_status = MagicMock(
+        side_effect=raise_on_status if raise_on_status else None
+    )
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+    return mock_response
 
 
 # ---------------------------------------------------------------------------
@@ -59,117 +63,96 @@ def _make_mock_session(return_value, raise_for_status_effect=None):
 # ---------------------------------------------------------------------------
 
 class TestQueryBuilder:
+    def test_build_live_contains_live_weight_filter(self):
+        result = QueryBuilder.build(MarketType.LIVE)
+        assert "avg_weight=700:899;" in result
 
-    def test_base_filters_contains_expected_constraints(self):
-        f = QueryBuilder._BASE_FILTERS
-        assert "class=Steers" in f
-        assert "frame=Medium and Large" in f
-        assert "muscle_grade=1-2,1" in f
-        assert "freight=F.O.B." in f
+    def test_build_video_contains_video_filters(self):
+        result = QueryBuilder.build(MarketType.VIDEO)
+        assert "wtd_avg_wt=700:899;" in result
+        assert "region_name=South Central,North Central;" in result
 
-    def test_market_filters_defined_for_all_market_types(self):
-        for market_type in MarketType:
-            assert market_type in QueryBuilder._MARKET_FILTERS
+    def test_build_direct_contains_direct_filters(self):
+        result = QueryBuilder.build(MarketType.DIRECT)
+        assert "wtd_avg_wt=700:899;" in result
+        assert "current=Yes;" in result
 
-    def test_build_prepends_base_filters(self):
+    def test_all_market_types_include_base_filters(self):
+        base_params = [
+            "class=Steers;",
+            "frame=Medium and Large;",
+            "muscle_grade=1-2,1;",
+            "freight=F.O.B.;",
+        ]
         for market_type in MarketType:
             result = QueryBuilder.build(market_type)
-            assert result.startswith(QueryBuilder._BASE_FILTERS)
+            for param in base_params:
+                assert param in result, f"Missing {param!r} for {market_type}"
 
-    def test_build_live_appends_correct_filters(self):
-        result = QueryBuilder.build(MarketType.LIVE)
-        assert result == QueryBuilder._BASE_FILTERS + QueryBuilder._MARKET_FILTERS[MarketType.LIVE]
-
-    def test_build_video_appends_correct_filters(self):
-        result = QueryBuilder.build(MarketType.VIDEO)
-        assert result == QueryBuilder._BASE_FILTERS + QueryBuilder._MARKET_FILTERS[MarketType.VIDEO]
-
-    def test_build_direct_appends_correct_filters(self):
-        result = QueryBuilder.build(MarketType.DIRECT)
-        assert result == QueryBuilder._BASE_FILTERS + QueryBuilder._MARKET_FILTERS[MarketType.DIRECT]
+    def test_build_unsupported_market_type_raises(self):
+        bad_type = MagicMock(spec=MarketType)
+        bad_type.__repr__ = lambda _: "bad"
+        with pytest.raises(APIClientError, match="Unsupported market type"):
+            QueryBuilder.build(bad_type)
 
 
 # ---------------------------------------------------------------------------
 # BaseAPIClient
 # ---------------------------------------------------------------------------
 
-class TestBaseAPIClientContextManager:
-
-    async def test_aenter_creates_session_with_basic_auth(self):
-        client = BaseAPIClient("https://example.com", "mykey")
+class TestBaseAPIClient:
+    @pytest.mark.asyncio
+    async def test_aenter_creates_session_with_basic_auth(self, base_client):
         with patch("app.infrastructure.api_client.aiohttp.ClientSession") as mock_cls:
-            mock_cls.return_value = MagicMock()
-            result = await client.__aenter__()
+            mock_session = MagicMock()
+            mock_cls.return_value = mock_session
 
-        assert result is client
-        assert client.session is mock_cls.return_value
-        mock_cls.assert_called_once()
-        auth_arg = mock_cls.call_args.kwargs["auth"]
-        assert isinstance(auth_arg, aiohttp.BasicAuth)
-        assert auth_arg.login == "mykey"
+            result = await base_client.__aenter__()
 
-    async def test_aexit_closes_session(self):
-        client = BaseAPIClient("https://example.com", "key")
+            assert result is base_client
+            assert base_client.session is mock_session
+            call_kwargs = mock_cls.call_args.kwargs
+            assert isinstance(call_kwargs["auth"], aiohttp.BasicAuth)
+            assert call_kwargs["auth"].login == API_KEY
+
+    @pytest.mark.asyncio
+    async def test_aexit_closes_session(self, base_client):
         mock_session = AsyncMock()
-        client.session = mock_session
+        base_client.session = mock_session
 
-        await client.__aexit__(None, None, None)
+        await base_client.__aexit__(None, None, None)
 
         mock_session.close.assert_awaited_once()
 
-    async def test_aexit_safe_when_session_is_none(self):
-        client = BaseAPIClient("https://example.com", "key")
-        await client.__aexit__(None, None, None)  # should not raise
+    @pytest.mark.asyncio
+    async def test_aexit_with_no_session_is_noop(self, base_client):
+        # Should not raise
+        await base_client.__aexit__(None, None, None)
 
-
-class TestBaseAPIClientGet:
-
-    async def test_raises_runtime_error_without_session(self):
-        client = BaseAPIClient("https://example.com", "key")
+    @pytest.mark.asyncio
+    async def test_get_raises_runtime_error_without_session(self, base_client):
         with pytest.raises(RuntimeError, match="Session not initialized"):
-            await client._get("https://example.com/api")
+            await base_client._get("https://api.example.com/resource")
 
-    async def test_returns_json_on_success(self):
-        client = BaseAPIClient("https://example.com", "key")
-        mock_session, _ = _make_mock_session({"ok": True})
-        client.session = mock_session
+    @pytest.mark.asyncio
+    async def test_get_returns_json_on_success(self, base_client):
+        expected = {"key": "value"}
+        mock_response = make_mock_response(json_data=expected)
+        base_client.session = MagicMock(get=MagicMock(return_value=mock_response))
 
-        result = await client._get("https://example.com/api")
+        result = await base_client._get("https://api.example.com/resource", params={"k": "v"})
 
-        assert result == {"ok": True}
+        assert result == expected
 
-    async def test_calls_raise_for_status(self):
-        client = BaseAPIClient("https://example.com", "key")
-        mock_session, mock_response = _make_mock_session({})
-        client.session = mock_session
-
-        await client._get("https://example.com/api")
-
-        mock_response.raise_for_status.assert_called_once()
-
-    async def test_passes_params_to_session_get(self):
-        client = BaseAPIClient("https://example.com", "key")
-        mock_session, _ = _make_mock_session({})
-        client.session = mock_session
-
-        params = {"foo": "bar"}
-        await client._get("https://example.com/api", params=params)
-
-        call_kwargs = mock_session.get.call_args
-        assert call_kwargs.kwargs.get("params") == params
-
-    async def test_propagates_http_error(self):
-        client = BaseAPIClient("https://example.com", "key")
-        mock_session, _ = _make_mock_session(
-            {},
-            raise_for_status_effect=aiohttp.ClientResponseError(
-                MagicMock(), MagicMock(), status=404
-            ),
+    @pytest.mark.asyncio
+    async def test_get_reraises_on_client_error(self, base_client):
+        mock_response = make_mock_response(
+            raise_on_status=aiohttp.ClientResponseError(MagicMock(), ())
         )
-        client.session = mock_session
+        base_client.session = MagicMock(get=MagicMock(return_value=mock_response))
 
         with pytest.raises(aiohttp.ClientResponseError):
-            await client._get("https://example.com/api")
+            await base_client._get("https://api.example.com/resource")
 
 
 # ---------------------------------------------------------------------------
@@ -177,166 +160,148 @@ class TestBaseAPIClientGet:
 # ---------------------------------------------------------------------------
 
 class TestAPIClientInit:
+    def test_endpoint_is_built_from_base_url_and_version(self, client):
+        assert client.endpoint == f"{BASE_URL}/{API_VERSION}/reports"
 
-    def test_endpoint_built_from_base_url_and_version(self):
-        client = APIClient(
-            base_url="https://api.example.com",
-            api_version="v1.1",
-            api_key="key",
-        )
-        assert client.endpoint == "https://api.example.com/v1.1/reports"
-
-    def test_uses_settings_defaults(self):
-        from app.config import settings
-
-        client = APIClient()
-        assert client.base_url == settings.MMN_BASE_URL
-        assert client.api_key == settings.MMN_API_KEY
+    def test_base_url_and_api_key_stored(self, client):
+        assert client.base_url == BASE_URL
+        assert client.api_key == API_KEY
 
 
 # ---------------------------------------------------------------------------
-# APIClient._calculate_last_days / _build_report_params
-# ---------------------------------------------------------------------------
-
-class TestCalculateLastDays:
-
-    def test_returns_correct_number_of_days(self):
-        prev = date.today() - timedelta(days=7)
-        assert APIClient._calculate_last_days(prev) == 7
-
-    def test_returns_zero_for_today(self):
-        assert APIClient._calculate_last_days(date.today()) == 0
-
-    def test_returns_one_for_yesterday(self):
-        assert APIClient._calculate_last_days(date.today() - timedelta(days=1)) == 1
-
-
-class TestBuildReportParams:
-
-    @pytest.fixture
-    def client(self):
-        return APIClient(base_url="https://x.com", api_version="v1", api_key="k")
-
-    def test_contains_last_days_and_q(self, client):
-        prev = date.today() - timedelta(days=3)
-        params = client._build_report_params(MarketType.LIVE, prev)
-        assert "lastDays" in params
-        assert "q" in params
-
-    def test_last_days_value_is_correct(self, client):
-        prev = date.today() - timedelta(days=5)
-        params = client._build_report_params(MarketType.LIVE, prev)
-        assert params["lastDays"] == 5
-
-    def test_q_matches_query_builder(self, client):
-        prev = date.today() - timedelta(days=1)
-        for market_type in MarketType:
-            params = client._build_report_params(market_type, prev)
-            assert params["q"] == QueryBuilder.build(market_type)
-
-
-# ---------------------------------------------------------------------------
-# APIClient.fetch_current_reports
+# fetch_current_reports
 # ---------------------------------------------------------------------------
 
 class TestFetchCurrentReports:
-
-    @pytest.fixture
-    def client(self):
-        return APIClient(base_url="https://x.com", api_version="v1", api_key="k")
-
+    @pytest.mark.asyncio
     async def test_returns_dict_keyed_by_slug(self, client):
-        with patch.object(client, "_get", AsyncMock(return_value=[INCOMING_REPORT_DATA])):
-            result = await client.fetch_current_reports()
-        assert "2497" in result
+        client._get = AsyncMock(return_value=[RAW_INCOMING_REPORT])
 
-    async def test_values_are_incoming_report_instances(self, client):
-        with patch.object(client, "_get", AsyncMock(return_value=[INCOMING_REPORT_DATA])):
-            result = await client.fetch_current_reports()
-        assert isinstance(result["2497"], IncomingReport)
+        result = await client.fetch_current_reports()
 
-    async def test_multiple_reports_keyed_correctly(self, client):
-        data = [
-            {**INCOMING_REPORT_DATA, "slug_id": "100"},
-            {**INCOMING_REPORT_DATA, "slug_id": "200"},
-        ]
-        with patch.object(client, "_get", AsyncMock(return_value=data)):
-            result = await client.fetch_current_reports()
-        assert set(result.keys()) == {"100", "200"}
+        assert "1234" in result
+        assert result["1234"].slug == "1234"
 
-    async def test_raises_api_client_error_on_client_error(self, client):
-        with patch.object(
-            client, "_get", AsyncMock(side_effect=aiohttp.ClientError("fail"))
-        ):
-            with pytest.raises(APIClientError):
-                await client.fetch_current_reports()
+    @pytest.mark.asyncio
+    async def test_multiple_reports_all_present(self, client):
+        second = {**RAW_INCOMING_REPORT, "slug_id": "other-slug"}
+        client._get = AsyncMock(return_value=[RAW_INCOMING_REPORT, second])
 
-    async def test_returns_empty_list_on_non_list_response(self, client):
-        with patch.object(client, "_get", AsyncMock(return_value={"unexpected": "dict"})):
-            result = await client.fetch_current_reports()
-        assert result == []
+        result = await client.fetch_current_reports()
 
-    async def test_calls_correct_endpoint(self, client):
-        mock_get = AsyncMock(return_value=[])
-        with patch.object(client, "_get", mock_get):
+        assert set(result.keys()) == {"1234", "other-slug"}
+
+    @pytest.mark.asyncio
+    async def test_empty_list_returns_empty_dict(self, client):
+        client._get = AsyncMock(return_value=[])
+
+        result = await client.fetch_current_reports()
+
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_non_list_response_raises_api_client_error(self, client):
+        client._get = AsyncMock(return_value={"not": "a list"})
+
+        with pytest.raises(APIClientError, match="Expected report list"):
             await client.fetch_current_reports()
-        mock_get.assert_awaited_once_with(client.endpoint)
+
+    @pytest.mark.asyncio
+    async def test_client_error_raises_api_client_error(self, client):
+        client._get = AsyncMock(side_effect=aiohttp.ClientError())
+
+        with pytest.raises(APIClientError, match="Failed to fetch reports"):
+            await client.fetch_current_reports()
+
+    @pytest.mark.asyncio
+    async def test_malformed_payload_raises_api_client_error(self, client):
+        client._get = AsyncMock(return_value=[{"bad": "payload"}])
+
+        with pytest.raises(APIClientError, match="Failed to parse report data"):
+            await client.fetch_current_reports()
+
+    @pytest.mark.asyncio
+    async def test_type_error_raises_api_client_error(self, client):
+        client._get = AsyncMock(return_value=[None])
+
+        with pytest.raises(APIClientError, match="Malformed report payload"):
+            await client.fetch_current_reports()
 
 
 # ---------------------------------------------------------------------------
-# APIClient.fetch_report_details
+# fetch_report_details
 # ---------------------------------------------------------------------------
 
 class TestFetchReportDetails:
+    @pytest.mark.asyncio
+    async def test_returns_report_response_on_success(self, client):
+        client._get = AsyncMock(return_value=RAW_REPORT_RESPONSE)
 
-    @pytest.fixture
-    def client(self):
-        return APIClient(base_url="https://x.com", api_version="v1", api_key="k")
+        result = await client.fetch_report_details("1234", MarketType.LIVE)
 
-    async def test_returns_report_response(self, client):
-        with patch.object(client, "_get", AsyncMock(return_value=REPORT_RESPONSE_DATA)):
-            result = await client.fetch_report_details("2497", MarketType.LIVE, date(2024, 1, 1))
-        assert isinstance(result, ReportResponse)
-
-    async def test_url_contains_slug_and_report_details(self, client):
-        captured = {}
-
-        async def mock_get(url, params=None):
-            captured["url"] = url
-            return REPORT_RESPONSE_DATA
-
-        with patch.object(client, "_get", mock_get):
-            await client.fetch_report_details("my-slug", MarketType.LIVE, date(2024, 1, 1))
-
-        assert "my-slug" in captured["url"]
-        assert "Report Details" in captured["url"]
-
-    async def test_passes_params_to_get(self, client):
-        captured = {}
-
-        async def mock_get(url, params=None):
-            captured["params"] = params
-            return REPORT_RESPONSE_DATA
-
-        with patch.object(client, "_get", mock_get):
-            await client.fetch_report_details("slug", MarketType.LIVE, date(2024, 1, 1))
-
-        assert "lastDays" in captured["params"]
-        assert "q" in captured["params"]
-
-    async def test_raises_api_client_error_on_client_error(self, client):
-        with patch.object(
-            client, "_get", AsyncMock(side_effect=aiohttp.ClientError("fail"))
-        ):
-            with pytest.raises(APIClientError):
-                await client.fetch_report_details("slug", MarketType.LIVE, date(2024, 1, 1))
-
-    async def test_raises_report_not_found_on_non_dict_response(self, client):
-        with patch.object(client, "_get", AsyncMock(return_value=[{"not": "a dict"}])):
-            with pytest.raises(ReportNotFoundError):
-                await client.fetch_report_details("slug", MarketType.LIVE, date(2024, 1, 1))
-
-    async def test_report_response_row_count(self, client):
-        with patch.object(client, "_get", AsyncMock(return_value=REPORT_RESPONSE_DATA)):
-            result = await client.fetch_report_details("slug", MarketType.LIVE, date(2024, 1, 1))
         assert result.row_count == 1
+        assert len(result.results) == 1
+
+    @pytest.mark.asyncio
+    async def test_url_includes_slug_and_report_details(self, client):
+        client._get = AsyncMock(return_value=RAW_REPORT_RESPONSE)
+
+        await client.fetch_report_details("1234", MarketType.LIVE)
+
+        call_url = client._get.call_args.args[0]
+        assert "1234" in call_url
+        assert "Report Details" in call_url
+
+    @pytest.mark.asyncio
+    async def test_params_include_last_reports_and_query(self, client):
+        client._get = AsyncMock(return_value=RAW_REPORT_RESPONSE)
+
+        await client.fetch_report_details("1234", MarketType.LIVE)
+
+        call_kwargs = client._get.call_args.kwargs
+        assert call_kwargs["params"]["lastReports"] == 1
+        assert "q" in call_kwargs["params"]
+
+    @pytest.mark.asyncio
+    async def test_non_dict_response_raises_report_not_found_error(self, client):
+        client._get = AsyncMock(return_value=[RAW_REPORT_RESPONSE])
+
+        with pytest.raises(ReportNotFoundError, match="1234"):
+            await client.fetch_report_details("1234", MarketType.LIVE)
+
+    @pytest.mark.asyncio
+    async def test_client_error_raises_api_client_error(self, client):
+        client._get = AsyncMock(side_effect=aiohttp.ClientError())
+
+        with pytest.raises(APIClientError, match="Failed to fetch report details"):
+            await client.fetch_report_details("1234", MarketType.LIVE)
+
+    @pytest.mark.asyncio
+    async def test_malformed_payload_raises_api_client_error(self, client):
+        client._get = AsyncMock(return_value={"results": "not-a-list", "stats": {}})
+
+        with pytest.raises(APIClientError, match="Failed to parse report details"):
+            await client.fetch_report_details("1234", MarketType.LIVE)
+
+    @pytest.mark.asyncio
+    async def test_type_error_raises_api_client_error(self, client):
+        client._get = AsyncMock(return_value=None)
+
+        with pytest.raises(APIClientError, match="Expected report detail object"):
+            await client.fetch_report_details("1234", MarketType.LIVE)
+
+
+# ---------------------------------------------------------------------------
+# _build_report_params
+# ---------------------------------------------------------------------------
+
+class TestBuildReportParams:
+    def test_returns_last_reports_one(self, client):
+        params = client._build_report_params(MarketType.LIVE)
+        assert params["lastReports"] == 1
+
+    def test_query_string_present_for_each_market_type(self, client):
+        for market_type in MarketType:
+            params = client._build_report_params(market_type)
+            assert "q" in params
+            assert len(params["q"]) > 0

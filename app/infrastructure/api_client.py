@@ -123,6 +123,7 @@ class APIClient(BaseAPIClient):
             raw_data = await self._get(self.endpoint)
             if not isinstance(raw_data, list):
                 raise APIClientError("Expected report list from current reports endpoint")
+            
             data = [IncomingReport(**report) for report in raw_data]
             logger.info(
                 "Fetched current reports",
@@ -131,6 +132,7 @@ class APIClient(BaseAPIClient):
                 endpoint=self.endpoint,
                 report_count=len(data),
             )
+            
             return {report.slug: report for report in data}
 
         except aiohttp.ClientError as err:
@@ -140,6 +142,7 @@ class APIClient(BaseAPIClient):
         except ValidationError as err:
             logger.error("Failed to parse report data", endpoint=self.endpoint, error=str(err))
             raise APIClientError("Failed to parse report data") from err
+        
         except TypeError as err:
             logger.exception(
                 "Malformed report payload",
@@ -177,6 +180,7 @@ class APIClient(BaseAPIClient):
         except ValidationError as err:
             logger.error("Failed to parse report details", slug=slug, market_type=market_type.value, error=str(err))
             raise APIClientError(f"Failed to parse report details for {slug!r}") from err
+        
         except TypeError as err:
             logger.exception(
                 "Malformed report details payload",
